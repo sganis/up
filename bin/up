@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# up [proyecto | dueño/proyecto | URL de GitHub]
+#
+# Abre Claude en un proyecto de GitHub, dentro de tmux: si se cierra la
+# terminal, sigue corriendo (tmux attach). Si el proyecto no está en ~/dev, lo
+# clona. Su memoria de Claude queda en up-priv (ver up-memoria).
+#
+#   up                                 muestra tus repos para elegir
+#   up proyecto                        uno tuyo
+#   up openai/codex                    cualquier repo de GitHub
+#   up https://github.com/openai/codex lo mismo
+#
+# En un repo ajeno, Claude pide permiso antes de cada cosa: el repo podría
+# traer instrucciones escondidas, y esta máquina tiene acceso a todos tus repos.
+set -euo pipefail
+
+aca=$(dirname "$(readlink -f "$0")")
+mkdir -p "$HOME/dev"
+
+repo=${1:-}
+if [ -z "$repo" ]; then
+  repos=()
+  while IFS= read -r r; do repos+=("$r"); done < <(gh repo list --limit 20 --json nameWithOwner,pushedAt \
+    --jq 'sort_by(.pushedAt) | reverse | .[].nameWithOwner')
+  for i in "${!repos[@]}"; do printf '%3d  %s\n' $((i + 1)) "${repos[i]#*/}"; done
+  read -rp "Número, nombre, o dueño/nombre de cualquier repo: " repo
+  if [[ $repo =~ ^[0-9]+$ ]] && [ "$repo" -ge 1 ] && [ "$repo" -le ${#repos[@]} ]; then
+    repo=${repos[repo - 1]}
+  fi
+fi
+
+# Aceptar también la URL, con o sin https:// y .git.
+repo=${repo#https://}
+repo=${repo#http://}
+repo=${repo#github.com/}
+repo=${repo%/}
+repo=${repo%.git}
+if ! [[ $repo =~ ^([A-Za-z0-9-]+/)?[A-Za-z0-9._-]+$ ]] || [[ $repo == *..* ]]; then
+  echo "up: '$repo' no es un repo de GitHub (proyecto o dueño/proyecto)" >&2
+  exit 1
+fi
+yo=$(gh api user --jq .login)
+[[ $repo == */* ]] || repo=$yo/$repo
+
+nombre=${repo#*/}
+dir=$HOME/dev/$nombre
+[ -d "$dir/.git" ] || gh repo clone "$repo" "$dir"
+"$aca/up-memoria" --solo-ajuste "$dir"
+
+claude=claude
+[ "${repo%%/*}" = "$yo" ] || claude="claude --permission-mode default"
+
+sesion=${nombre//[.:]/_}
+if [ -n "${TMUX:-}" ]; then
+  tmux has-session -t "=$sesion" 2>/dev/null || tmux new-session -d -s "$sesion" -c "$dir" "$claude; exec bash"
+  exec tmux switch-client -t "=$sesion"
+fi
+exec tmux new-session -A -s "$sesion" -c "$dir" "$claude; exec bash"

@@ -1,0 +1,45 @@
+# Revisa los scripts y publica setup.sh en https://sganis.github.io/up
+# Las acciones van fijadas por commit: publican lo que se corre con curl | sh.
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: shellcheck
+        run: |
+          shellcheck -s sh setup.sh
+          shellcheck bin/* test/*.sh
+      - name: pruebas
+        run: |
+          bash test/memoria.sh
+          bash test/bye.sh
+          bash test/up.sh
+      - name: armar el sitio
+        run: |
+          mkdir _site
+          cp setup.sh _site/index.html
+          cp setup.sh _site/setup.sh
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# up-memoria [--solo-ajuste] [carpeta]
+#
+# Guarda la memoria de Claude de un proyecto en ~/dev/up-priv/memoria/<proyecto>/.
+# up-priv es privado: la memoria nunca queda en el repo del proyecto, que puede
+# ser público.
+#
+# Se lo dice a Claude con autoMemoryDirectory en .claude/settings.local.json del
+# proyecto, un archivo que git ignora: el repo no cambia. Si el proyecto ya tenía
+# memoria en el lugar de siempre (~/.claude/projects/<ruta>/memory), las notas
+# se mudan primero, y nunca se pisa una nota que ya exista del otro lado.
+#
+# Después sube los cambios de up-priv a GitHub, en segundo plano. Con
+# --solo-ajuste no sube ni cuenta avisos: lo usa `up` antes de abrir Claude,
+# que enseguida corre esto mismo como hook.
+#
+# Es el hook SessionStart de Claude. Sin carpeta, usa la del proyecto actual.
+set -uo pipefail
+shopt -s nullglob dotglob
+export GIT_TERMINAL_PROMPT=0   # nunca pedir usuario ni contraseña
+
+PRIV=$HOME/dev/up-priv
+AVISO=$HOME/.cache/up/aviso   # un problema de la vez anterior, para contarlo
+
+conectar() {
+  local top comun raiz url nombre dst mem cfg valor f tmp
+  top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 0   # no es un repo
+  comun=$(git -C "$top" rev-parse --path-format=absolute --git-common-dir)
+  raiz=$top
+  case $comun in */.git) raiz=${comun%/.git} ;; esac   # en un worktree, la memoria de siempre es la del repo principal
+
+  # El nombre del repo en GitHub, o el de la carpeta si no está en GitHub.
+  url=$(git -C "$top" remote get-url origin 2>/dev/null || true)
+  case $url in
+    *github.com[:/]*) nombre=$(basename "${url%.git}") ;;
+    *) nombre=$(basename "$raiz") ;;
+  esac
+  dst=$PRIV/memoria/$nombre
+  # shellcheck disable=SC2088 # el ~ lo expande Claude: el mismo ajuste sirve en la Mac y en el live
+  valor="~/dev/up-priv/memoria/$nombre"
+  cfg=$top/.claude/settings.local.json
+  mkdir -p "$dst"
+
+  # Mudar la memoria del lugar de siempre.
+  mem=$HOME/.claude/projects/$(printf %s "$raiz" | sed 's/[^a-zA-Z0-9]/-/g')/memory
+  if [ -L "$mem" ]; then
+    rm "$mem"   # enlace de una versión anterior: las notas ya están en up-priv
+  elif [ -d "$mem" ]; then
+    for f in "$mem"/*; do mv -n "$f" "$dst/" 2>/dev/null; done
+    if ! rmdir "$mem" 2>/dev/null; then
+      echo "up-memoria: no pasé la memoria de $top a up-priv. Estas notas de $mem ya existen en $dst con otro contenido, y no pisé ninguna:"
+      for f in "$mem"/*; do echo "  ${f##*/}"; done
+      echo "Juntá cada una a mano en $dst, borrá $mem y volvé a abrir Claude."
+      return 0
+    fi
+  fi
+
+  [ "$(jq -r '.autoMemoryDirectory // empty' "$cfg" 2>/dev/null)" = "$valor" ] && return 0
+
+  # Primero que git lo ignore, sin tocar el .gitignore del proyecto: el repo
+  # puede ser público y el archivo tiene los permisos que aprobaste.
+  if git -C "$top" ls-files --error-unmatch .claude/settings.local.json >/dev/null 2>&1; then
+    if ! git -C "$top" update-index --skip-worktree .claude/settings.local.json 2>/dev/null; then
+      echo "up-memoria: no pude hacer que git ignore $cfg (¿otro git corriendo?), así que todavía no le dije a Claude que use $dst. Se reintenta la próxima vez."
+      return 0
+    fi
+  elif ! git -C "$top" check-ignore -q .claude/settings.local.json; then
+    mkdir -p "$comun/info"
+    echo "/.claude/settings.local.json" >>"$comun/info/exclude"
+  fi
+
+  # Después, decirle a Claude dónde está la memoria.
+  mkdir -p "$top/.claude"
+  [ -s "$cfg" ] || echo '{}' >"$cfg"
+  tmp=$(mktemp)   # fuera del repo
+  if jq --arg v "$valor" '.autoMemoryDirectory = $v' "$cfg" >"$tmp"; then
+    cat "$tmp" >"$cfg"
+  else
+    echo "up-memoria: $cfg no es JSON válido; no le pude decir a Claude que use $dst."
+  fi
+  rm -f "$tmp"
+}
+
+# Subir up-priv. Una sola subida a la vez, y nada si alguien está resolviendo
+# un conflicto ahí.
+subir() {
+  local g   # candado no es local: lo usa el trap, que corre cuando la función ya terminó
+  cd "$PRIV" || return
+  g=$(git rev-parse --absolute-git-dir) || return
+  [ -d "$g/rebase-merge" ] || [ -d "$g/rebase-apply" ] || [ -f "$g/MERGE_HEAD" ] && return
+  candado=$g/up-memoria.lock
+  find "$candado" -maxdepth 0 -mmin +10 -exec rmdir {} \; 2>/dev/null   # de una subida que murió
+  mkdir "$candado" 2>/dev/null || return
+  trap 'rmdir "$candado"' EXIT
+  git add -A
+  git diff --cached --quiet || git commit -qm "up-memoria: $(hostname -s)"
+  if ! git pull -q --rebase --autostash; then
+    if [ -d "$g/rebase-merge" ] || [ -d "$g/rebase-apply" ]; then   # es el de este pull
+      git rebase --abort
+      mkdir -p "${AVISO%/*}"
+      echo "up-memoria: la memoria cambió en dos máquinas a la vez y no la pude juntar sola. Avisale al usuario: hay que resolverlo en $PRIV (git pull --rebase)." >"$AVISO"
+    fi
+    return
+  fi
+  git push -q
+}
+
+solo=
+[ "${1:-}" = --solo-ajuste ] && { solo=1; shift; }
+
+[ -d "$PRIV/.git" ] || exit 0
+# Lo que imprime este script lo lee Claude al arrancar.
+if [ -z "$solo" ] && [ -s "$AVISO" ]; then cat "$AVISO"; rm -f "$AVISO"; fi
+conectar "${1:-${CLAUDE_PROJECT_DIR:-$PWD}}"
+[ -n "$solo" ] && exit 0
+
+# En segundo plano y sin salida, para no demorar a Claude.
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
+(subir) </dev/null >/dev/null 2>&1 &

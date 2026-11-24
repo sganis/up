@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# bye — antes de apagar.
+#
+# Sube los cambios de todos los repos de ~/dev, con sus worktrees, incluida la
+# memoria de Claude (que está en up-priv). Si todo subió, cierra Tailscale y
+# apaga. Si algo no se pudo subir, dice qué y no apaga.
+#
+# - En los repos privados commitea todo lo que cambió. En los públicos no
+#   commitea por vos: sube tus commits y nombra lo que quedó sin commitear.
+# - Nunca sube archivos de más de 50 MB (un video bajado sin querer) ni
+#   .claude/settings.local.json (el ajuste de la memoria).
+# - No apaga si hay commits sin subir en otra rama, un stash, un merge a medias,
+#   memoria de Claude fuera de up-priv, o carpetas sin git en ~/dev.
+set -uo pipefail
+shopt -s nullglob
+export GIT_TERMINAL_PROMPT=0   # nunca pedir usuario ni contraseña
+
+GRANDE=50   # MB
+FUERA=(':(exclude).claude/settings.local.json*' ':(exclude).claude/worktrees')
+
+# commitear: agrega todo lo que cambió, menos lo grande y lo que nunca se sube.
+commitear() {
+  local lista f
+  lista=$(mktemp)
+  while IFS= read -r -d '' f; do
+    case $f in .claude/settings.local.json* | .claude/worktrees/*) continue ;; esac
+    if [ -d "$f" ]; then
+      echo "  no subo $f: es otro repo de git"
+    elif [ -f "$f" ] && [ "$(du -m "$f" | cut -f1)" -gt "$GRANDE" ]; then
+      echo "  no subo $f: pesa más de $GRANDE MB"
+    else
+      printf '%s\0' "$f" >>"$lista"
+    fi
+  done < <(git ls-files -z -m -o -d --exclude-standard)
+  if [ -s "$lista" ] && ! git add -A --pathspec-from-file="$lista" --pathspec-file-nul; then
+    rm -f "$lista"
+    return 1
+  fi
+  rm -f "$lista"
+  git diff --cached --quiet || git commit -qm "bye: $(hostname -s) $(date '+%F %R')"
+}
+
+# subir <carpeta>: deja esa copia de trabajo en GitHub. Sale con error si queda algo.
+subir() (
+  cd "$1" || exit 1
+  g=$(git rev-parse --git-dir) || exit 1
+  if [ -d "$g/rebase-merge" ] || [ -d "$g/rebase-apply" ] || [ -f "$g/MERGE_HEAD" ]; then
+    echo "  hay un merge o un rebase a medias"
+    exit 1
+  fi
+  git symbolic-ref -q HEAD >/dev/null || { echo "  no está en una rama"; exit 1; }
+
+  privado=
+  [ "$(gh repo view --json visibility -q .visibility 2>/dev/null)" = PRIVATE ] && privado=1
+  if [ -n "$privado" ]; then commitear || exit 1; fi
+
+  if git rev-parse -q --verify '@{u}' >/dev/null; then
+    if [ "$(git rev-list --count '@{u}..HEAD')" -gt 0 ]; then
+      if ! git pull -q --rebase --autostash; then
+        git rebase --abort 2>/dev/null
+        echo "  cambió también en GitHub y no se pudo juntar solo"
+        exit 1
+      fi
+      git push -q || exit 1
+    fi
+  elif git rev-parse -q --verify HEAD >/dev/null; then
+    git push -q -u origin HEAD || exit 1   # rama nueva
+  fi
+
+  falta=0
+  sucio=$(git status --porcelain -- . "${FUERA[@]}")
+  if [ -n "$sucio" ]; then
+    [ -n "$privado" ] || echo "  es público (o no sé si es privado): no commiteo por vos. Sin commitear:"
+    [ -n "$privado" ] && echo "  quedó sin subir:"
+    printf '%s\n' "$sucio" | sed 's/^/    /'
+    falta=1
+  fi
+  for b in $(git for-each-ref --format='%(refname:short)' refs/heads); do
+    if [ -n "$(git log --oneline -1 "$b" --not --remotes)" ]; then
+      echo "  la rama $b tiene commits sin subir"
+      falta=1
+    fi
+  done
+  if [ -n "$(git stash list)" ]; then
+    echo "  hay cambios guardados con git stash"
+    falta=1
+  fi
+  exit "$falta"
+)
+
+cd "$HOME/dev" || exit 1
+mal=()
+for d in */; do
+  d=${d%/}
+  if [ ! -e "$d/.git" ]; then
+    echo "✗ $d: no es un repo de git, y lo que tiene se pierde al apagar"
+    mal+=("$d")
+    continue
+  fi
+  git -C "$d" worktree prune
+  copias=()
+  while IFS= read -r w; do copias+=("$w"); done < <(git -C "$d" worktree list --porcelain | sed -n 's/^worktree //p')
+  # Primero los worktrees, así sus ramas ya están subidas cuando se revisa la principal.
+  for ((i = ${#copias[@]} - 1; i >= 0; i--)); do
+    nombre=$d
+    [ "$i" -gt 0 ] && nombre="$d (${copias[i]##*/})"
+    if salida=$(subir "${copias[i]}" 2>&1); then
+      echo "✓ $nombre"
+    else
+      echo "✗ $nombre"
+      [ -n "$salida" ] && echo "$salida"
+      mal+=("$nombre")
+    fi
+  done
+done
+
+for m in "$HOME"/.claude/projects/*/memory; do
+  if [ -d "$m" ] && [ ! -L "$m" ] && [ -n "$(ls -A "$m")" ]; then
+    echo "✗ memoria de Claude fuera de up-priv, se pierde al apagar: $m"
+    mal+=("memoria")
+  fi
+done
+
+if [ ${#mal[@]} -gt 0 ]; then
+  echo
+  echo "No apago: falta subir ${mal[*]}."
+  exit 1
+fi
+
+command -v systemctl >/dev/null || { echo "Todo subido."; exit 0; }
+echo
+echo "Todo subido. Apago en 10 segundos (Ctrl-C para cancelar)."
+sleep 10
+command -v tailscale >/dev/null && sudo tailscale logout 2>/dev/null
+sudo systemctl poweroff
