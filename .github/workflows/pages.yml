@@ -1,7 +1,7 @@
-# Revisa los scripts y publica setup.sh en https://sganis.github.io/up
-# Las acciones van fijadas por commit: publican lo que se corre con curl | sh.
-# Dos jobs, como el ejemplo oficial de GitHub: si se publica en el mismo job en
-# que se sube el sitio, a veces GitHub todavía no lo encuentra ("Found 0 artifacts").
+# Checks the scripts and publishes setup.sh at https://sganis.github.io/up
+# Actions are pinned by commit: they publish what gets run with curl | sh.
+# Two jobs, like GitHub's official example: publishing in the same job that
+# uploads the site sometimes fails to find it ("Found 0 artifacts").
 name: pages
 
 on:
@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  revisar:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,12 +27,12 @@ jobs:
         run: |
           shellcheck -s sh setup.sh
           shellcheck bin/* test/*.sh
-      - name: pruebas
+      - name: tests
         run: |
-          bash test/memoria.sh
+          bash test/memory.sh
           bash test/down.sh
           bash test/up.sh
-      - name: armar el sitio
+      - name: build the site
         run: |
           mkdir _site
           cp setup.sh _site/index.html
@@ -41,8 +41,8 @@ jobs:
         with:
           path: _site
 
-  publicar:
-    needs: revisar
+  publish:
+    needs: check
     runs-on: ubuntu-latest
     environment:
       name: github-pages

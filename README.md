@@ -1,63 +1,64 @@
 # up
 
-Deja una máquina Linux lista para trabajar con Claude Code en cualquier proyecto de GitHub. Está pensado para una máquina ajena con Linux Mint live desde un USB: todo queda en memoria y se borra al apagar.
+Sets up a Linux machine to work with Claude Code on any GitHub project. Made for someone else's machine booted from a Linux Mint live USB stick: everything lives in RAM and is gone after shutdown.
 
 ```sh
-curl -fsSL https://sganis.github.io/up | sh
+curl -fL https://sganis.github.io/up | sh
 ```
 
-Siempre con `https://`: sin eso, el primer pedido viaja sin cifrar y en una red ajena te pueden dar otro script.
+Always with `https://`: without it, the first request goes unencrypted and, on a foreign network, someone could hand you a different script.
 
-1. Instala `git`, `gh`, `tmux`, `vim`, `ripgrep`, `jq`, `ffmpeg`, `rclone`, `qrencode`, lo necesario para compilar, y la última versión de `yt-dlp`.
-2. Se conecta a GitHub: muestra un QR que abre github.com/login/device en el celular, y ahí se escribe el código.
-3. Baja el repo privado `<usuario>/up-priv` y toma de ahí la configuración.
-4. Pone la zona horaria.
-5. Instala `oc` (OpenShift) y `kubectl`, Rust (rustup), Bun y Claude Code.
-6. Instala Tailscale y lo conecta con un QR que se aprueba desde el celular (Ctrl-C lo saltea).
+1. Installs `git`, `gh`, `tmux`, `vim`, `ripgrep`, `jq`, `ffmpeg`, `rclone`, `qrencode`, what's needed to compile, and the latest `yt-dlp`.
+2. Logs in to GitHub: it shows a QR that opens github.com/login/device on your phone, where you type the code.
+3. Downloads the private repo `<user>/up-priv` and takes the settings from there.
+4. Sets the time zone.
+5. Installs `oc` (OpenShift) and `kubectl`, Rust (rustup), Bun and Claude Code.
 
-Al terminar, en la misma terminal ya andan `up`, `down`, `claude`, `cargo`, `bun`, `oc` y `drive`. Si algo ya estaba hecho, lo saltea: correrlo de nuevo no baja nada otra vez.
+No password is typed on the machine. Anything already done is skipped: running it again downloads nothing.
 
-En la máquina no se escribe ninguna contraseña.
+## Commands
 
-## Comandos
+They work in the same terminal as soon as the script finishes, and in any other.
 
 ```sh
-up                # tus repos, para elegir: lo clona en ~/dev y abre Claude en tmux
-up proyecto       # uno tuyo
-up dueño/repo     # cualquier repo de GitHub (también sirve la URL)
-down              # sube los cambios de todos los repos de ~/dev, cierra Tailscale y apaga
+up                # your repos, to pick one: clones it into ~/dev and opens Claude in tmux
+up project        # one of yours
+up owner/repo     # any GitHub repo (its URL works too)
+down              # pushes the changes of every repo in ~/dev and powers off
+drive             # optional: connects Google Drive (rclone remote "gdrive")
+vpn               # optional: installs and connects Tailscale (vpn --login-server <url>)
 ```
 
-En un repo ajeno, Claude pide permiso antes de cada cosa: el repo podría traer instrucciones escondidas, y la máquina tiene acceso a todos tus repos.
+On someone else's repo, Claude asks before doing anything: the repo could carry hidden instructions, and the machine has access to all your repos.
 
-`down` no apaga si algo no se pudo subir, y dice qué:
+`down` doesn't power off if something couldn't be pushed, and says what:
 
-- En los repos privados commitea todo lo que cambió. En los públicos no commitea por vos: sube tus commits y nombra lo que quedó sin commitear.
-- Nunca sube archivos de más de 50 MB ni `.claude/settings.local.json`.
-- Tampoco apaga si hay commits sin subir en otra rama, un `stash`, un merge a medias, memoria de Claude fuera de `up-priv`, o carpetas sin git en `~/dev`.
+- In private repos it commits everything that changed. In public ones it doesn't commit for you: it pushes your commits and lists what's uncommitted.
+- It never pushes files over 50 MB nor `.claude/settings.local.json`.
+- It doesn't power off either if there are unpushed commits on another branch, a `stash`, a half-done merge, Claude memory outside `up-priv`, or folders without git in `~/dev`.
 
-## La memoria de Claude
+## Claude's memory
 
-`up-memoria` guarda la memoria de Claude de cada proyecto en `up-priv/memoria/<proyecto>/`, no en el repo del proyecto, que puede ser público. Se lo indica a Claude con `autoMemoryDirectory` en `.claude/settings.local.json`, que git ignora. Corre como hook `SessionStart` de Claude y sube los cambios de `up-priv` en segundo plano.
+`up-memory` keeps Claude's memory for each project in `up-priv/memory/<project>/`, not in the project's repo, which may be public. It tells Claude through `autoMemoryDirectory` in `.claude/settings.local.json`, which git ignores. It runs as Claude's `SessionStart` hook and pushes `up-priv` in the background.
 
 ## `up-priv`
 
-Este repo es público y no tiene nada privado. Lo privado va en `<usuario>/up-priv`:
+This repo is public and has nothing private. The private part goes in `<user>/up-priv`:
 
-| Archivo | Qué es |
+| File | What it is |
 |---|---|
-| `up.conf` | `GIT_NAME`, `GIT_EMAIL`, `ZONA` |
-| `claude.env` | `CLAUDE_CODE_OAUTH_TOKEN=...`, de `claude setup-token` |
-| `bashrc` | prompt y alias |
-| `CLAUDE.md` | instrucciones globales de Claude |
-| `settings.json` | configuración de Claude |
-| `memoria/` | la memoria de Claude, un directorio por proyecto |
+| `up.conf` | `GIT_NAME`, `GIT_EMAIL`, `TIMEZONE` |
+| `claude.env` | `CLAUDE_CODE_OAUTH_TOKEN=...`, from `claude setup-token` |
+| `bashrc` | prompt and aliases |
+| `CLAUDE.md` | Claude's global instructions |
+| `settings.json` | Claude settings |
+| `memory/` | Claude's memory, one folder per project |
 
-## Pruebas
+## Tests
 
 ```sh
-bash test/memoria.sh
+bash test/memory.sh
 bash test/down.sh
 bash test/up.sh
-bash test/mint.sh <repo>   # setup.sh entero en un contenedor de Linux Mint (Docker)
+bash test/mint.sh <repo>   # setup.sh end to end in a Linux Mint container (Docker)
 ```

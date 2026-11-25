@@ -1,189 +1,177 @@
 #!/bin/sh
-# up — deja una máquina Linux lista para trabajar con Claude Code en cualquier
-# proyecto de GitHub. Pensado para Linux Mint live desde un USB: todo queda en
-# memoria y se borra al apagar.
+# up — sets up a Linux machine to work with Claude Code on any GitHub project.
+# Made for Linux Mint live from a USB stick: everything lives in RAM and is
+# gone after shutdown.
 #
-#     curl -fsSL https://sganis.github.io/up | sh
+#     curl -fL https://sganis.github.io/up | sh
 #
-# Este repo es público: no tiene claves ni datos. Lo privado (configuración,
-# clave de Claude, memoria de Claude) está en el repo privado <usuario>/up-priv,
-# y se baja recién después de aprobar el acceso a GitHub desde el celular.
+# This repo is public: no keys, no data. The private part (settings, Claude
+# key, Claude memory) lives in the private repo <user>/up-priv, and is only
+# downloaded after you approve GitHub access from your phone.
 #
-# Al terminar, en la misma terminal: `up` abre un proyecto con Claude.
-# Antes de apagar: `down`.
+# When it's done, in the same terminal: `up` opens a project with Claude,
+# `down` pushes everything and powers off.
 
-UP=sganis/up   # este repo
+UP=sganis/up   # this repo
 
-paso()  { printf '\n\033[1m▸ %s\033[0m\n' "$*"; }
-aviso() { printf '\033[33m! %s\033[0m\n' "$*"; }
-falla() { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+step() { printf '\n\033[1m▸ %s\033[0m\n' "$*"; }
+warn() { printf '\033[33m! %s\033[0m\n' "$*"; }
+die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
-# clonar dueño/repo: lo clona en ~/dev, o lo actualiza si ya está.
-clonar() {
+# Git must never stop to ask for anything (a password, an unknown ssh host).
+export GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes"
+
+# clone owner/repo: clones it into ~/dev, or updates it if it's already there.
+clone() {
   d=$HOME/dev/${1#*/}
   if [ -d "$d/.git" ]; then
-    git -C "$d" pull -q --ff-only || aviso "no pude actualizar $d"
+    git -C "$d" pull -q --ff-only || warn "could not update $d"
   else
     gh repo clone "$1" "$d" -- -q
   fi
 }
 
-# El live trae una fuente cdrom:// (el USB) sin archivo Release, que hace
-# fallar todo apt-get update, también el del instalador de Tailscale. No sirve
-# para nada: se desactiva siempre, al empezar.
-sin_cdrom() {
+# The live system has a cdrom:// apt source (the USB stick) without a Release
+# file. It makes every apt-get update fail, and it's useless anyway: disable
+# it, always, first thing.
+no_cdrom() {
   for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
     [ -f "$f" ] && grep -q '^[[:space:]]*[^#[:space:]].*cdrom:' "$f" &&
       sudo sed -i 's/^\([[:space:]]*[^#[:space:]].*cdrom:.*\)$/# \1/' "$f"
   done
   if grep -s -l '^[[:space:]]*[^#[:space:]].*cdrom:' /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; then
-    aviso "quedó una fuente cdrom: activa en el archivo de arriba; apt-get update va a fallar"
+    warn "a cdrom: apt source is still enabled in the file above; apt-get update will fail"
   fi
   return 0
 }
 
-# Los errores de update se muestran pero no frenan: si de verdad falta algo,
-# falla la instalación.
-actualizar() {
-  sudo apt-get -qq update || aviso "apt-get update dio errores (arriba)"
-}
-
-# Todo adentro de main: así sh lee el script entero antes de empezar.
+# Everything inside main: sh reads the whole script before running anything.
 main() {
   set -eu
-  # Con `curl | sh` la entrada es el script: las preguntas van a la terminal.
-  # (En una subshell: si /dev/tty no se puede abrir, dash cierra el shell entero.)
+  # With `curl | sh`, stdin is the script: questions go to the terminal.
+  # (In a subshell: if /dev/tty can't be opened, dash kills the whole shell.)
   if (exec </dev/tty) 2>/dev/null; then exec </dev/tty; tty=1; else tty=; fi
-  [ "$(id -u)" != 0 ] || falla "corrélo como usuario normal, no como root"
-  command -v apt-get >/dev/null || falla "hace falta Linux con apt (Mint, Ubuntu, Debian)"
+  [ "$(id -u)" != 0 ] || die "run it as a normal user, not as root"
+  command -v apt-get >/dev/null || die "needs Linux with apt (Mint, Ubuntu, Debian)"
 
-  paso "Programas"
-  sin_cdrom
-  # Cada paso se saltea si ya está hecho: correrlo de nuevo no baja nada otra vez.
-  falta=
-  for c in curl git gh tmux vim rg jq ffmpeg rclone python3 qrencode unzip cc pkg-config; do command -v "$c" >/dev/null || falta=1; done
-  if [ -n "$falta" ]; then
-    actualizar
+  step "Packages"
+  no_cdrom
+  # Every step is skipped when it's already done: running it again downloads nothing.
+  missing=
+  for c in curl git gh tmux vim rg jq ffmpeg rclone python3 qrencode unzip cc pkg-config; do
+    command -v "$c" >/dev/null || missing=1
+  done
+  if [ -n "$missing" ]; then
+    # Update errors are shown but don't stop: if something is really missing, the install fails.
+    sudo apt-get -qq update || warn "apt-get update had errors (above)"
     sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y \
-      curl git gh tmux vim ripgrep jq ffmpeg rclone python3 qrencode unzip build-essential pkg-config libssl-dev >/dev/null || falla "no pude instalar los programas (el error de apt está arriba)"
+      curl git gh tmux vim ripgrep jq ffmpeg rclone python3 qrencode unzip build-essential pkg-config libssl-dev \
+      >/dev/null || die "could not install the packages (apt's error is above)"
   fi
-  # yt-dlp de su sitio: el de apt viene viejo y YouTube cambia seguido.
+  # yt-dlp from its own site: the apt one is old and YouTube changes often.
   if [ ! -x /usr/local/bin/yt-dlp ]; then
     { sudo curl -fsSL -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp &&
-      sudo chmod +x /usr/local/bin/yt-dlp; } || aviso "no pude bajar yt-dlp"
+      sudo chmod +x /usr/local/bin/yt-dlp; } || warn "could not download yt-dlp"
   fi
 
-  paso "GitHub"
+  step "GitHub"
   if ! gh auth status >/dev/null 2>&1; then
-    [ -n "$tty" ] || falla "sin terminal no puedo pedir el acceso a GitHub"
-    echo "Escaneá este QR con el celular (abre github.com/login/device),"
-    echo "escribí el código que aparece abajo y tocá Authorize. Acá, apretá Enter cuando lo pida."
+    [ -n "$tty" ] || die "without a terminal I can't ask for GitHub access"
+    echo "Scan this QR with your phone (it opens github.com/login/device),"
+    echo "type the code shown below and tap Authorize. Here, press Enter when asked."
     qrencode -t ANSIUTF8 -m 2 https://github.com/login/device || true
     GH_BROWSER=true gh auth login --hostname github.com --git-protocol https --web --insecure-storage
   fi
   gh auth setup-git
-  yo=$(gh api user --jq .login)
+  me=$(gh api user --jq .login)
 
-  paso "Lo privado ($yo/up-priv)"
+  step "Private settings ($me/up-priv)"
   mkdir -p "$HOME/dev"
-  clonar "$yo/up-priv"
-  clonar "$UP"
+  clone "$me/up-priv"
+  clone "$UP"
   PRIV=$HOME/dev/up-priv
-  GIT_NAME='' GIT_EMAIL='' ZONA=''
+  GIT_NAME='' GIT_EMAIL='' TIMEZONE=''
   # shellcheck source=/dev/null
   [ -f "$PRIV/up.conf" ] && . "$PRIV/up.conf"
   [ -z "$GIT_NAME" ] || git config --global user.name "$GIT_NAME"
   [ -z "$GIT_EMAIL" ] || git config --global user.email "$GIT_EMAIL"
   git config --global init.defaultBranch main
 
-  paso "Hora"
-  if [ -n "$ZONA" ]; then
-    sudo timedatectl set-timezone "$ZONA" 2>/dev/null ||
-      sudo ln -sf "/usr/share/zoneinfo/$ZONA" /etc/localtime || aviso "no pude poner la hora de $ZONA"
+  step "Time zone"
+  if [ -n "$TIMEZONE" ]; then
+    sudo timedatectl set-timezone "$TIMEZONE" 2>/dev/null ||
+      sudo ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime || warn "could not set the time zone to $TIMEZONE"
   fi
 
-  paso "Terminal"
+  step "Commands"
   mkdir -p "$HOME/.local/bin" "$HOME/.claude"
-  # Los comandos van a /usr/local/bin: así andan en cualquier terminal, también
-  # en esta, sin abrir otra ni recargar nada.
-  for c in up down drive up-memoria; do sudo ln -sf "$HOME/dev/up/bin/$c" "/usr/local/bin/$c"; done
+  # Commands go to /usr/local/bin: they work in any terminal, this one too,
+  # without opening another one or reloading anything.
+  for c in up down vpn drive up-memory; do sudo ln -sf "$HOME/dev/up/bin/$c" "/usr/local/bin/$c"; done
   if ! grep -q '^# up:' "$HOME/.bashrc" 2>/dev/null; then
-    cat >>"$HOME/.bashrc" <<'FIN'
+    cat >>"$HOME/.bashrc" <<'EOF'
 
-# up: comandos (up, down), clave de Claude y configuración propia, de up-priv
+# up: Claude key and personal shell settings, from up-priv
 export PATH="$HOME/.local/bin:$PATH"
 if [ -f ~/dev/up-priv/claude.env ]; then set -a; . ~/dev/up-priv/claude.env; set +a; fi
 if [ -f ~/dev/up-priv/bashrc ]; then . ~/dev/up-priv/bashrc; fi
-FIN
+EOF
   fi
 
-  # oc (OpenShift) y kubectl, del sitio oficial: no están en apt.
+  # oc (OpenShift) and kubectl, from the official site: they're not in apt.
   if ! command -v oc >/dev/null; then
     case $(uname -m) in aarch64 | arm64) a=-arm64 ;; *) a= ;; esac
     curl -fsSL "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux$a.tar.gz" |
-      sudo tar -xz -C /usr/local/bin oc kubectl || aviso "no pude instalar oc"
+      sudo tar -xz -C /usr/local/bin oc kubectl || warn "could not install oc"
   fi
 
-  paso "Rust"
-  # Con rustup, el instalador oficial. Agrega ~/.cargo/bin a ~/.bashrc para las
-  # terminales nuevas; los enlaces en /usr/local/bin hacen que ande ya en esta.
+  step "Rust"
+  # With rustup, the official installer. It adds ~/.cargo/bin to ~/.bashrc for
+  # new terminals; the links in /usr/local/bin make it work in this one too.
   if [ ! -x "$HOME/.cargo/bin/rustup" ]; then
-    curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y -q || aviso "no pude instalar Rust"
+    curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y -q || warn "could not install Rust"
   fi
   for f in "$HOME"/.cargo/bin/*; do [ -x "$f" ] && sudo ln -sf "$f" /usr/local/bin/; done
 
-  paso "Bun"
+  step "Bun"
   if [ ! -x "$HOME/.bun/bin/bun" ]; then
-    curl -fsSL https://bun.sh/install | bash >/dev/null 2>&1 || aviso "no pude instalar Bun"
+    curl -fsSL https://bun.sh/install | bash >/dev/null 2>&1 || warn "could not install Bun"
   fi
   for f in "$HOME"/.bun/bin/*; do [ -x "$f" ] && sudo ln -sf "$f" /usr/local/bin/; done
 
-  paso "Claude"
+  step "Claude"
   [ -x "$HOME/.local/bin/claude" ] || curl -fsSL https://claude.ai/install.sh | bash
-  [ -x "$HOME/.local/bin/claude" ] || falla "no se instaló Claude"
-  # `claude` en cualquier terminal, con la clave de up-priv aunque la terminal no la tenga.
-  sudo tee /usr/local/bin/claude >/dev/null <<'FIN'
+  [ -x "$HOME/.local/bin/claude" ] || die "Claude was not installed"
+  # `claude` in any terminal, with the up-priv key even if the terminal doesn't have it.
+  sudo tee /usr/local/bin/claude >/dev/null <<'EOF'
 #!/bin/sh
 if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -f "$HOME/dev/up-priv/claude.env" ]; then
   set -a; . "$HOME/dev/up-priv/claude.env"; set +a
 fi
 exec "$HOME/.local/bin/claude" "$@"
-FIN
+EOF
   sudo chmod +x /usr/local/bin/claude
-  # Instrucciones globales: un enlace, así lo que cambie acá lo sube down.
+  # Global instructions: a link, so whatever changes here gets pushed by `down`.
   [ -f "$PRIV/CLAUDE.md" ] && ln -sf "$PRIV/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
-  # Configuración de up-priv, más el hook que guarda la memoria en up-priv.
-  # shellcheck disable=SC2016 # $HOME lo expande Claude al correr el hook
-  hook='{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"$HOME/dev/up/bin/up-memoria"}]}]}}'
+  # Settings from up-priv, plus the hook that keeps the memory in up-priv.
+  # shellcheck disable=SC2016 # $HOME is expanded by Claude when it runs the hook
+  hook='{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"$HOME/dev/up/bin/up-memory"}]}]}}'
   if [ -f "$PRIV/settings.json" ]; then
     jq --argjson h "$hook" '. * $h' "$PRIV/settings.json" >"$HOME/.claude/settings.json"
   else
     printf '%s\n' "$hook" >"$HOME/.claude/settings.json"
   fi
-  # Sin esto, Claude pide entrar aunque tenga la clave.
+  # Without this, Claude asks you to log in even though it has the key.
   f=$HOME/.claude.json
   [ -f "$f" ] || echo '{}' >"$f"
   jq '.hasCompletedOnboarding = true' "$f" >"$f.tmp" && mv "$f.tmp" "$f"
 
-  # Al final: si no hace falta, se saltea con Ctrl-C y lo demás ya está.
-  if [ -d /run/systemd/system ]; then
-    paso "Tailscale"
-    # Si no se puede instalar, se avisa y se sigue: Claude ya está listo.
-    command -v tailscale >/dev/null || curl -fsSL https://tailscale.com/install.sh | sh || aviso "no pude instalar Tailscale"
-    if command -v tailscale >/dev/null && [ "$(tailscale status --json 2>/dev/null | jq -r .BackendState)" != Running ]; then
-      echo "Escaneá el QR con el celular y aprobá esta máquina (Ctrl-C para saltearlo)."
-      trap : INT
-      sudo tailscale up --qr || aviso "Tailscale no quedó conectado"
-      trap - INT
-    fi
-  else
-    aviso "sin systemd: no instalo Tailscale"
-  fi
-
-  [ -f "$PRIV/claude.env" ] || aviso "up-priv no tiene claude.env: Claude te va a pedir que entres"
-  paso "Listo. En esta misma terminal:"
-  echo "  up      abrir un proyecto (Claude, en tmux)"
-  echo "  down    subir todo y apagar"
+  [ -f "$PRIV/claude.env" ] || warn "up-priv has no claude.env: Claude will ask you to log in"
+  step "Done. In this same terminal:"
+  echo "  up      open a project (Claude, in tmux)"
+  echo "  down    push everything and power off"
+  echo "  drive   connect Google Drive (optional)"
+  echo "  vpn     install and connect Tailscale (optional)"
 }
 
 main "$@"

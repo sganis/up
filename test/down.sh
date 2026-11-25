@@ -1,152 +1,152 @@
 #!/usr/bin/env bash
-# Prueba de bin/down con un HOME de mentira y sudo/systemctl/tailscale/gh falsos:  bash test/down.sh
-# shellcheck disable=SC2016,SC2034,SC2015 # las comprobaciones van entre comillas simples a propósito: las evalúa chequear
+# Tests bin/down with a fake HOME and fake sudo/systemctl/tailscale/gh:  bash test/down.sh
+# shellcheck disable=SC2016,SC2034,SC2015 # checks are single-quoted on purpose: check() evals them
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 DOWN=$PWD/bin/down
 T=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$T"' EXIT
 export HOME=$T/home GIT_CONFIG_GLOBAL=$T/gitconfig GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME=$T/xdg
-git config --global user.name prueba
-git config --global user.email prueba@example.com
+git config --global user.name test
+git config --global user.email test@example.com
 git config --global init.defaultBranch main
 mkdir -p "$HOME/dev" "$T/bin"
 
-# Falsos: anotan la llamada en vez de apagar
+# Fakes: they record the call instead of powering off
 for c in systemctl tailscale; do
-  printf '#!/bin/sh\necho "%s $*" >>"%s/llamadas"\n' "$c" "$T" >"$T/bin/$c"
+  printf '#!/bin/sh\necho "%s $*" >>"%s/calls"\n' "$c" "$T" >"$T/bin/$c"
 done
 printf '#!/bin/sh\nexec "$@"\n' >"$T/bin/sudo"
 printf '#!/bin/sh\n:\n' >"$T/bin/sleep"
-# gh repo view: los repos con "publico" en el nombre son públicos
-printf '#!/bin/sh\ncase "$PWD" in *publico*) echo PUBLIC ;; *) echo PRIVATE ;; esac\n' >"$T/bin/gh"
+# gh repo view: repos with "public" in their name are public
+printf '#!/bin/sh\ncase "$PWD" in *public*) echo PUBLIC ;; *) echo PRIVATE ;; esac\n' >"$T/bin/gh"
 chmod +x "$T/bin"/*
 export PATH=$T/bin:$PATH
 
-fallas=0
-chequear() { if eval "$2"; then echo "ok   $1"; else echo "MAL  $1"; fallas=$((fallas + 1)); fi; }
-repo() {   # repo <nombre>: clon con remoto local y un primer commit subido
+failures=0
+check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; failures=$((failures + 1)); fi; }
+repo() {   # repo <name>: a clone with a local remote and a first commit pushed
   git init -q --bare "$T/$1.git"
   git clone -q "$T/$1.git" "$HOME/dev/$1" 2>/dev/null
-  echo hola >"$HOME/dev/$1/leeme.md"
-  git -C "$HOME/dev/$1" add -A && git -C "$HOME/dev/$1" commit -qm inicio && git -C "$HOME/dev/$1" push -q -u origin main
+  echo hi >"$HOME/dev/$1/readme.md"
+  git -C "$HOME/dev/$1" add -A && git -C "$HOME/dev/$1" commit -qm start && git -C "$HOME/dev/$1" push -q -u origin main
 }
-remoto() { git --git-dir="$T/$1.git" show "main:$2" 2>/dev/null; }
-apago() { grep -q "systemctl poweroff" "$T/llamadas" 2>/dev/null; }
-correr() { rm -f "$T/llamadas"; salida=$("$DOWN" 2>&1); codigo=$?; }
-dice() { printf %s "$salida" | grep -qF -- "$1"; }
+remote() { git --git-dir="$T/$1.git" show "main:$2" 2>/dev/null; }
+powered_off() { grep -q "systemctl poweroff" "$T/calls" 2>/dev/null; }
+run() { rm -f "$T/calls"; out=$("$DOWN" 2>&1); code=$?; }
+says() { printf %s "$out" | grep -qF -- "$1"; }
 
-# 1. Todo sube: cambios sin commit, commits sin subir, y un repo sin cambios
+# 1. Everything gets pushed: uncommitted changes, unpushed commits, and a repo without changes
 repo a; repo b; repo c
-echo cambio >>"$HOME/dev/a/leeme.md"; echo nuevo >"$HOME/dev/a/nuevo.md"
+echo change >>"$HOME/dev/a/readme.md"; echo new >"$HOME/dev/a/new.md"
 echo local >"$HOME/dev/b/b.md"; git -C "$HOME/dev/b" add -A; git -C "$HOME/dev/b" commit -qm local
-correr
-chequear "sube cambios sin commit" 'remoto a nuevo.md | grep -q nuevo && remoto a leeme.md | grep -q cambio'
-chequear "sube commits que faltaban" 'remoto b b.md | grep -q local'
-chequear "el repo sin cambios queda igual" '[ "$(git --git-dir="$T/c.git" rev-list --count main)" = 1 ]'
-chequear "sale bien" '[ "$codigo" = 0 ]'
-chequear "cierra Tailscale" 'grep -q "tailscale logout" "$T/llamadas"'
-chequear "apaga" 'apago'
+run
+check "pushes uncommitted changes" 'remote a new.md | grep -q new && remote a readme.md | grep -q change'
+check "pushes unpushed commits" 'remote b b.md | grep -q local'
+check "the repo without changes stays the same" '[ "$(git --git-dir="$T/c.git" rev-list --count main)" = 1 ]'
+check "exits fine" '[ "$code" = 0 ]'
+check "logs out of Tailscale" 'grep -q "tailscale logout" "$T/calls"'
+check "powers off" 'powered_off'
 
-# 2. GitHub cambió mientras tanto: junta y sube
-git clone -q "$T/a.git" "$T/otra" && echo de-otra >"$T/otra/otra.md" && git -C "$T/otra" add -A \
-  && git -C "$T/otra" commit -qm otra && git -C "$T/otra" push -q
-echo mio >"$HOME/dev/a/mio.md"
-correr
-chequear "junta con lo nuevo de GitHub y sube" 'remoto a mio.md | grep -q mio && remoto a otra.md | grep -q de-otra'
+# 2. GitHub changed meanwhile: merges and pushes
+git clone -q "$T/a.git" "$T/other" && echo from-there >"$T/other/other.md" && git -C "$T/other" add -A \
+  && git -C "$T/other" commit -qm other && git -C "$T/other" push -q
+echo mine >"$HOME/dev/a/mine.md"
+run
+check "merges what's new on GitHub and pushes" 'remote a mine.md | grep -q mine && remote a other.md | grep -q from-there'
 
-# 3. Algo no se puede subir: avisa y no apaga
-echo cambio >"$HOME/dev/c/c.md"
-rm -rf "$T/c.git"   # el remoto desaparece
-correr
-chequear "si falla, sale con error" '[ "$codigo" != 0 ]'
-chequear "si falla, nombra el repo" 'dice "✗ c" && dice "falta subir c"'
-chequear "si falla, no apaga ni cierra Tailscale" '[ ! -f "$T/llamadas" ]'
-chequear "si falla, el cambio queda guardado en un commit" '[ -z "$(git -C "$HOME/dev/c" status --porcelain)" ]'
+# 3. Something can't be pushed: says so and doesn't power off
+echo change >"$HOME/dev/c/c.md"
+rm -rf "$T/c.git"   # the remote is gone
+run
+check "on failure, exits with an error" '[ "$code" != 0 ]'
+check "on failure, names the repo" 'says "✗ c" && says "still to push: c"'
+check "on failure, neither powers off nor logs out of Tailscale" '[ ! -f "$T/calls" ]'
+check "on failure, the change is kept in a commit" '[ -z "$(git -C "$HOME/dev/c" status --porcelain)" ]'
 rm -rf "$HOME/dev/c"
 
-# 4. Un archivo grande (un video bajado sin querer en el repo) no se sube ni se pierde
-dd if=/dev/urandom of="$HOME/dev/a/video grande.mp4" bs=1048576 count=60 2>/dev/null
-echo chico >"$HOME/dev/a/chico.md"
-correr
-chequear "grande: no lo sube" '! git --git-dir="$T/a.git" ls-tree -r --name-only main | grep -q video'
-chequear "grande: ni lo copia a .git" '[ "$(du -sm "$HOME/dev/a/.git" | cut -f1)" -lt 50 ]'
-chequear "grande: lo demás sí sube" 'remoto a chico.md | grep -q chico'
-chequear "grande: sigue en el disco" '[ -f "$HOME/dev/a/video grande.mp4" ]'
-chequear "grande: avisa con el nombre" 'dice "video grande.mp4"'
-chequear "grande: no apaga" '[ "$codigo" != 0 ] && ! apago'
-rm -f "$HOME/dev/a/video grande.mp4"
+# 4. A big file (a video downloaded by mistake into the repo) is neither pushed nor lost
+dd if=/dev/urandom of="$HOME/dev/a/big video.mp4" bs=1048576 count=60 2>/dev/null
+echo small >"$HOME/dev/a/small.md"
+run
+check "big: not pushed" '! git --git-dir="$T/a.git" ls-tree -r --name-only main | grep -q video'
+check "big: not even copied into .git" '[ "$(du -sm "$HOME/dev/a/.git" | cut -f1)" -lt 50 ]'
+check "big: the rest is pushed" 'remote a small.md | grep -q small'
+check "big: still on disk" '[ -f "$HOME/dev/a/big video.mp4" ]'
+check "big: names it" 'says "big video.mp4"'
+check "big: doesn't power off" '[ "$code" != 0 ] && ! powered_off'
+rm -f "$HOME/dev/a/big video.mp4"
 
-# 5. git add falla (un index.lock que quedó): no apaga
-echo otro >"$HOME/dev/a/otro.md"
+# 5. git add fails (a leftover index.lock): doesn't power off
+echo another >"$HOME/dev/a/another.md"
 touch "$HOME/dev/a/.git/index.lock"
-correr
-chequear "add falla: no apaga" '[ "$codigo" != 0 ] && ! apago && dice "✗ a"'
+run
+check "add fails: doesn't power off" '[ "$code" != 0 ] && ! powered_off && says "✗ a"'
 rm -f "$HOME/dev/a/.git/index.lock"
-correr
-chequear "add falla: al reintentar sube" '[ "$codigo" = 0 ] && remoto a otro.md | grep -q otro'
+run
+check "add fails: pushes on the next try" '[ "$code" = 0 ] && remote a another.md | grep -q another'
 
-# 6. Otra rama con commits sin subir, y un stash: no apaga
-git -C "$HOME/dev/b" checkout -q -b arreglo && echo x >"$HOME/dev/b/x.md" && git -C "$HOME/dev/b" add -A \
-  && git -C "$HOME/dev/b" commit -qm arreglo && git -C "$HOME/dev/b" checkout -q main
-correr
-chequear "otra rama sin subir: no apaga" '[ "$codigo" != 0 ] && ! apago && dice "arreglo"'
-git -C "$HOME/dev/b" push -q -u origin arreglo
-echo guardado >>"$HOME/dev/b/leeme.md" && git -C "$HOME/dev/b" stash -q
-correr
-chequear "stash: no apaga" '[ "$codigo" != 0 ] && ! apago && dice "stash"'
+# 6. Another branch with unpushed commits, and a stash: doesn't power off
+git -C "$HOME/dev/b" checkout -q -b fix && echo x >"$HOME/dev/b/x.md" && git -C "$HOME/dev/b" add -A \
+  && git -C "$HOME/dev/b" commit -qm fix && git -C "$HOME/dev/b" checkout -q main
+run
+check "unpushed branch: doesn't power off" '[ "$code" != 0 ] && ! powered_off && says "branch fix"'
+git -C "$HOME/dev/b" push -q -u origin fix
+echo saved >>"$HOME/dev/b/readme.md" && git -C "$HOME/dev/b" stash -q
+run
+check "stash: doesn't power off" '[ "$code" != 0 ] && ! powered_off && says "stash"'
 git -C "$HOME/dev/b" stash drop -q
 
-# 7. Un worktree de Claude (.claude/worktrees/x, rama nueva): se sube su rama, no se mete en el repo
+# 7. A Claude worktree (.claude/worktrees/x, new branch): its branch is pushed, not added to the repo
 git -C "$HOME/dev/b" worktree add -q -b worktree-x "$HOME/dev/b/.claude/worktrees/x" 2>/dev/null
-echo del-worktree >"$HOME/dev/b/.claude/worktrees/x/w.md"
-correr
-chequear "worktree: sube su rama" 'git --git-dir="$T/b.git" show worktree-x:w.md 2>/dev/null | grep -q del-worktree'
-chequear "worktree: no queda adentro del repo" '! git --git-dir="$T/b.git" ls-tree -r --name-only main | grep -q worktrees'
-chequear "worktree: apaga" '[ "$codigo" = 0 ] && apago'
+echo from-worktree >"$HOME/dev/b/.claude/worktrees/x/w.md"
+run
+check "worktree: pushes its branch" 'git --git-dir="$T/b.git" show worktree-x:w.md 2>/dev/null | grep -q from-worktree'
+check "worktree: not added to the repo" '! git --git-dir="$T/b.git" ls-tree -r --name-only main | grep -q worktrees'
+check "worktree: powers off" '[ "$code" = 0 ] && powered_off'
 git -C "$HOME/dev/b" worktree remove --force "$HOME/dev/b/.claude/worktrees/x"
 
-# 8. Un merge a medias: no commitea las marcas de conflicto
-git clone -q "$T/b.git" "$T/otrab" && echo de-alla >"$T/otrab/leeme.md" && git -C "$T/otrab" commit -qam alla && git -C "$T/otrab" push -q
-echo de-aca >"$HOME/dev/b/leeme.md" && git -C "$HOME/dev/b" commit -qam aca
+# 8. A half-done merge: doesn't commit the conflict markers
+git clone -q "$T/b.git" "$T/otherb" && echo from-there >"$T/otherb/readme.md" && git -C "$T/otherb" commit -qam there && git -C "$T/otherb" push -q
+echo from-here >"$HOME/dev/b/readme.md" && git -C "$HOME/dev/b" commit -qam here
 git -C "$HOME/dev/b" pull -q --no-rebase >/dev/null 2>&1
-correr
-chequear "merge a medias: no apaga" '[ "$codigo" != 0 ] && ! apago'
-chequear "merge a medias: no sube marcas de conflicto" '! remoto b leeme.md | grep -q "<<<<<<<"'
+run
+check "half-done merge: doesn't power off" '[ "$code" != 0 ] && ! powered_off'
+check "half-done merge: doesn't push conflict markers" '! remote b readme.md | grep -q "<<<<<<<"'
 git -C "$HOME/dev/b" merge --abort; git -C "$HOME/dev/b" reset -q --hard origin/main
 
-# 9. Repo público: sube tus commits, pero no commitea por vos
-repo publico
-echo commit >"$HOME/dev/publico/hecho.md" && git -C "$HOME/dev/publico" add -A && git -C "$HOME/dev/publico" commit -qm hecho
-echo secreto >"$HOME/dev/publico/.env"
-echo cambio >>"$HOME/dev/publico/leeme.md"
-correr
-chequear "público: sube los commits" 'remoto publico hecho.md | grep -q commit'
-chequear "público: no sube archivos nuevos" '! remoto publico .env >/dev/null'
-chequear "público: no commitea cambios" '! remoto publico leeme.md | grep -q cambio'
-chequear "público: los nombra y no apaga" 'dice ".env" && dice "leeme.md" && [ "$codigo" != 0 ] && ! apago'
-rm -rf "$HOME/dev/publico"
+# 9. Public repo: pushes your commits, but doesn't commit for you
+repo public
+echo commit >"$HOME/dev/public/done.md" && git -C "$HOME/dev/public" add -A && git -C "$HOME/dev/public" commit -qm finished
+echo secret >"$HOME/dev/public/.env"
+echo change >>"$HOME/dev/public/readme.md"
+run
+check "public: pushes the commits" 'remote public done.md | grep -q commit'
+check "public: doesn't push new files" '! remote public .env >/dev/null'
+check "public: doesn't commit changes" '! remote public readme.md | grep -q change'
+check "public: names them and doesn't power off" 'says ".env" && says "readme.md" && [ "$code" != 0 ] && ! powered_off'
+rm -rf "$HOME/dev/public"
 
-# 10. settings.local.json (el ajuste de la memoria) nunca se sube
+# 10. settings.local.json (the memory setting) is never pushed
 mkdir -p "$HOME/dev/a/.claude"
-echo '{"autoMemoryDirectory":"~/dev/up-priv/memoria/a"}' >"$HOME/dev/a/.claude/settings.local.json"
-echo ultimo >"$HOME/dev/a/ultimo.md"
-correr
-chequear "settings.local.json: no lo sube" '! git --git-dir="$T/a.git" ls-tree -r --name-only main | grep -q settings.local'
-chequear "settings.local.json: lo demás sí" 'remoto a ultimo.md | grep -q ultimo'
+echo '{"autoMemoryDirectory":"~/dev/up-priv/memory/a"}' >"$HOME/dev/a/.claude/settings.local.json"
+echo last >"$HOME/dev/a/last.md"
+run
+check "settings.local.json: not pushed" '! git --git-dir="$T/a.git" ls-tree -r --name-only main | grep -q settings.local'
+check "settings.local.json: the rest is" 'remote a last.md | grep -q last'
 rm -rf "$HOME/dev/a/.claude"
 
-# 11. Memoria de Claude fuera de up-priv, o una carpeta sin git en ~/dev: no apaga
-mkdir -p "$HOME/.claude/projects/-home-mint/memory" && echo nota >"$HOME/.claude/projects/-home-mint/memory/n.md"
-correr
-chequear "memoria suelta: no apaga y la nombra" '[ "$codigo" != 0 ] && ! apago && dice "-home-mint/memory"'
+# 11. Claude memory outside up-priv, or a folder without git in ~/dev: doesn't power off
+mkdir -p "$HOME/.claude/projects/-home-mint/memory" && echo note >"$HOME/.claude/projects/-home-mint/memory/n.md"
+run
+check "loose memory: doesn't power off and names it" '[ "$code" != 0 ] && ! powered_off && says "-home-mint/memory"'
 rm -rf "$HOME/.claude/projects/-home-mint"
-mkdir -p "$HOME/dev/borrador" && echo x >"$HOME/dev/borrador/x.txt"
-correr
-chequear "carpeta sin git: no apaga y la nombra" '[ "$codigo" != 0 ] && ! apago && dice "borrador"'
-rm -rf "$HOME/dev/borrador"
-correr
-chequear "todo en orden de nuevo: apaga" '[ "$codigo" = 0 ] && apago'
+mkdir -p "$HOME/dev/draft" && echo x >"$HOME/dev/draft/x.txt"
+run
+check "folder without git: doesn't power off and names it" '[ "$code" != 0 ] && ! powered_off && says "draft"'
+rm -rf "$HOME/dev/draft"
+run
+check "all in order again: powers off" '[ "$code" = 0 ] && powered_off'
 
 echo
-[ "$fallas" -eq 0 ] && echo "todo bien" || { echo "$fallas fallas"; exit 1; }
+[ "$failures" -eq 0 ] && echo "all good" || { echo "$failures failures"; exit 1; }

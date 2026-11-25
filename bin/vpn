@@ -1,0 +1,13 @@
+#!/bin/sh
+# vpn [tailscale up options] — optional: installs Tailscale if needed and
+# connects this machine. It shows a QR to approve from your phone.
+#
+#   vpn                                        Tailscale's own server
+#   vpn --login-server https://your.server     your own server (Headscale)
+#
+# `down` logs out of Tailscale before powering off.
+set -eu
+if ! command -v tailscale >/dev/null; then
+  curl -fsSL https://tailscale.com/install.sh | sh
+fi
+exec sudo tailscale up --qr "$@"

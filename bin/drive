@@ -1,7 +1,7 @@
 #!/bin/sh
-# drive — conecta Google Drive como el remoto gdrive de rclone.
+# drive — connects Google Drive as rclone's "gdrive" remote.
 #
-# La clave de Drive da acceso a todo el Drive y no vence, así que no se guarda
-# en ningún repo: esto abre el navegador para entrar a Google, y la clave queda
-# solo en esta máquina (en el live, en memoria: se borra al apagar).
+# The Drive key gives access to the whole Drive and never expires, so it's not
+# stored in any repo: this opens the browser to sign in to Google, and the key
+# stays only on this machine (on the live system, in RAM: gone at shutdown).
 exec rclone config create gdrive drive

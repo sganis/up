@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# up [proyecto | dueño/proyecto | URL de GitHub]
+# up [project | owner/project | GitHub URL]
 #
-# Abre Claude en un proyecto de GitHub, dentro de tmux: si se cierra la
-# terminal, sigue corriendo (tmux attach). Si el proyecto no está en ~/dev, lo
-# clona. Su memoria de Claude queda en up-priv (ver up-memoria).
+# Opens Claude on a GitHub project, inside tmux: if the terminal closes, it
+# keeps running (`up <project>` again, or `tmux attach`). If the project is not
+# in ~/dev, it clones it. Its Claude memory stays in up-priv (see up-memory).
 #
-#   up                                 muestra tus repos para elegir
-#   up proyecto                        uno tuyo
-#   up openai/codex                    cualquier repo de GitHub
-#   up https://github.com/openai/codex lo mismo
+#   up                                 lists your repos to pick one
+#   up project                         one of yours
+#   up openai/codex                    any GitHub repo
+#   up https://github.com/openai/codex the same
 #
-# En un repo ajeno, Claude pide permiso antes de cada cosa: el repo podría
-# traer instrucciones escondidas, y esta máquina tiene acceso a todos tus repos.
+# On someone else's repo, Claude asks before doing anything: the repo could
+# carry hidden instructions, and this machine has access to all your repos.
 set -euo pipefail
 
-aca=$(dirname "$(readlink -f "$0")")
+here=$(dirname "$(readlink -f "$0")")
 mkdir -p "$HOME/dev"
 
 repo=${1:-}
@@ -23,33 +23,33 @@ if [ -z "$repo" ]; then
   while IFS= read -r r; do repos+=("$r"); done < <(gh repo list --limit 20 --json nameWithOwner,pushedAt \
     --jq 'sort_by(.pushedAt) | reverse | .[].nameWithOwner')
   for i in "${!repos[@]}"; do printf '%3d  %s\n' $((i + 1)) "${repos[i]#*/}"; done
-  read -rp "Número, nombre, o dueño/nombre de cualquier repo: " repo
+  read -rp "Number, name, or owner/name of any repo: " repo
   if [[ $repo =~ ^[0-9]+$ ]] && [ "$repo" -ge 1 ] && [ "$repo" -le ${#repos[@]} ]; then
     repo=${repos[repo - 1]}
   fi
 fi
 
-# Aceptar también la URL, con o sin https:// y .git.
+# Also accept the URL, with or without https:// and .git.
 repo=${repo#https://}
 repo=${repo#http://}
 repo=${repo#github.com/}
 repo=${repo%/}
 repo=${repo%.git}
 if ! [[ $repo =~ ^([A-Za-z0-9-]+/)?[A-Za-z0-9._-]+$ ]] || [[ $repo == *..* ]]; then
-  echo "up: '$repo' no es un repo de GitHub (proyecto o dueño/proyecto)" >&2
+  echo "up: '$repo' is not a GitHub repo (project or owner/project)" >&2
   exit 1
 fi
-yo=$(gh api user --jq .login)
-[[ $repo == */* ]] || repo=$yo/$repo
+me=$(gh api user --jq .login)
+[[ $repo == */* ]] || repo=$me/$repo
 
-nombre=${repo#*/}
-dir=$HOME/dev/$nombre
+name=${repo#*/}
+dir=$HOME/dev/$name
 [ -d "$dir/.git" ] || gh repo clone "$repo" "$dir"
-"$aca/up-memoria" --solo-ajuste "$dir"
+"$here/up-memory" --settings-only "$dir"
 
 claude=claude
-if [ "${repo%%/*}" = "$yo" ]; then
-  # Tu repo: que Claude no pregunte si confiás en la carpeta.
+if [ "${repo%%/*}" = "$me" ]; then
+  # Your repo: Claude doesn't ask whether you trust the folder.
   f=$HOME/.claude.json
   [ -s "$f" ] || echo '{}' >"$f"
   tmp=$(mktemp)
@@ -59,13 +59,13 @@ else
   claude="claude --permission-mode default"
 fi
 
-# Lo que corre en tmux se arma su entorno (PATH y clave de Claude): así anda
-# aunque `up` se llame desde una terminal que no los tiene.
-correr="export PATH=\"\$HOME/.local/bin:\$HOME/.cargo/bin:\$HOME/.bun/bin:\$PATH\"; [ -f ~/dev/up-priv/claude.env ] && { set -a; . ~/dev/up-priv/claude.env; set +a; }; $claude; exec bash"
+# What runs in tmux sets up its own environment (PATH and Claude key): it works
+# even when `up` is called from a terminal that doesn't have them.
+run="export PATH=\"\$HOME/.local/bin:\$HOME/.cargo/bin:\$HOME/.bun/bin:\$PATH\"; [ -f ~/dev/up-priv/claude.env ] && { set -a; . ~/dev/up-priv/claude.env; set +a; }; $claude; exec bash"
 
-sesion=${nombre//[.:]/_}
+session=${name//[.:]/_}
 if [ -n "${TMUX:-}" ]; then
-  tmux has-session -t "=$sesion" 2>/dev/null || tmux new-session -d -s "$sesion" -c "$dir" "$correr"
-  exec tmux switch-client -t "=$sesion"
+  tmux has-session -t "=$session" 2>/dev/null || tmux new-session -d -s "$session" -c "$dir" "$run"
+  exec tmux switch-client -t "=$session"
 fi
-exec tmux new-session -A -s "$sesion" -c "$dir" "$correr"
+exec tmux new-session -A -s "$session" -c "$dir" "$run"
