@@ -1,0 +1,21 @@
+# expect: maneja setup.sh como lo harías vos en la terminal del live.
+# Lo usa test/mint-adentro.sh. Necesita REPO en el entorno.
+set timeout 1500
+spawn sh -c "cat /src/setup.sh | sh"
+expect {
+  "Número, nombre" { send "$env(REPO)\r" }
+  timeout { puts "\n### timeout: no llegó al menú de up"; exit 1 }
+  eof { puts "\n### setup.sh terminó sin llegar al menú de up"; exit 1 }
+}
+set timeout 180
+expect {
+  "trust this folder" { puts "\n### Claude preguntó si confía en la carpeta"; exit 2 }
+  "for shortcuts" { puts "\n### Claude abierto" }
+  timeout { puts "\n### timeout esperando a Claude"; exit 1 }
+  eof { puts "\n### se cerró antes de abrir Claude"; exit 1 }
+}
+sleep 2
+# Ctrl-b d: salir de tmux sin cerrar Claude.
+send "\002d"
+expect eof
+exit 0

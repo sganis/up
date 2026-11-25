@@ -45,9 +45,13 @@ done
 correr mio
 chequear "sin dueño: es tuyo" '[ "$(cat "$T/clonados")" = yo/mio ]'
 chequear "tuyo: Claude en tu modo de siempre" '! grep -q -- "--permission-mode" "$T/tmux"'
+chequear "tuyo: no pregunta si confiás en la carpeta" '[ "$(jq -r --arg d "$HOME/dev/mio" ".projects[\$d].hasTrustDialogAccepted" "$HOME/.claude.json")" = true ]'
+chequear "Claude carga la clave aunque la terminal no la tenga" 'grep -q "up-priv/claude.env" "$T/tmux"'
+chequear "Claude se encuentra aunque la terminal no tenga ~/.local/bin" 'grep -q "\.local/bin" "$T/tmux"'
 
 correr otro/cosa
 chequear "ajeno: Claude pide permiso para todo" 'grep -q -- "claude --permission-mode default" "$T/tmux"'
+chequear "ajeno: sí pregunta si confiás en la carpeta" '[ "$(jq -r --arg d "$HOME/dev/cosa" ".projects[\$d].hasTrustDialogAccepted // false" "$HOME/.claude.json")" = false ]'
 
 rm -f "$T/clonados" "$T/tmux"
 printf '2\n' | "$UP" >/dev/null 2>&1

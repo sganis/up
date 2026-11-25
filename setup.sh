@@ -92,7 +92,9 @@ main() {
 
   paso "Terminal"
   mkdir -p "$HOME/.local/bin" "$HOME/.claude"
-  for c in up bye up-memoria; do ln -sf "$HOME/dev/up/bin/$c" "$HOME/.local/bin/$c"; done
+  # Los comandos van a /usr/local/bin: así andan en cualquier terminal, también
+  # en esta, sin abrir otra ni recargar nada.
+  for c in up bye drive up-memoria; do sudo ln -sf "$HOME/dev/up/bin/$c" "/usr/local/bin/$c"; done
   if ! grep -q '^# up:' "$HOME/.bashrc" 2>/dev/null; then
     cat >>"$HOME/.bashrc" <<'FIN'
 
@@ -106,6 +108,15 @@ FIN
   paso "Claude"
   [ -x "$HOME/.local/bin/claude" ] || curl -fsSL https://claude.ai/install.sh | bash
   [ -x "$HOME/.local/bin/claude" ] || falla "no se instaló Claude"
+  # `claude` en cualquier terminal, con la clave de up-priv aunque la terminal no la tenga.
+  sudo tee /usr/local/bin/claude >/dev/null <<'FIN'
+#!/bin/sh
+if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -f "$HOME/dev/up-priv/claude.env" ]; then
+  set -a; . "$HOME/dev/up-priv/claude.env"; set +a
+fi
+exec "$HOME/.local/bin/claude" "$@"
+FIN
+  sudo chmod +x /usr/local/bin/claude
   # Instrucciones globales: un enlace, así lo que cambie acá lo sube bye.
   [ -f "$PRIV/CLAUDE.md" ] && ln -sf "$PRIV/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
   # Configuración de up-priv, más el hook que guarda la memoria en up-priv.
@@ -124,8 +135,9 @@ FIN
   # Al final: si no hace falta, se saltea con Ctrl-C y lo demás ya está.
   if [ -d /run/systemd/system ]; then
     paso "Tailscale"
-    command -v tailscale >/dev/null || curl -fsSL https://tailscale.com/install.sh | sh
-    if [ "$(tailscale status --json 2>/dev/null | jq -r .BackendState)" != Running ]; then
+    # Si no se puede instalar, se avisa y se sigue: Claude ya está listo.
+    command -v tailscale >/dev/null || curl -fsSL https://tailscale.com/install.sh | sh || aviso "no pude instalar Tailscale"
+    if command -v tailscale >/dev/null && [ "$(tailscale status --json 2>/dev/null | jq -r .BackendState)" != Running ]; then
       echo "Escaneá el QR con el celular y aprobá esta máquina (Ctrl-C para saltearlo)."
       trap : INT
       sudo tailscale up --qr || aviso "Tailscale no quedó conectado"
@@ -146,7 +158,7 @@ FIN
     aviso "up-priv no tiene claude.env: Claude te va a pedir que entres"
   fi
   echo "up: abrir un proyecto.   bye: subir todo y apagar."
-  if [ -n "$tty" ]; then exec "$HOME/.local/bin/up"; fi
+  if [ -n "$tty" ]; then exec /usr/local/bin/up; fi
 }
 
 main "$@"

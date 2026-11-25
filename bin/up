@@ -48,11 +48,24 @@ dir=$HOME/dev/$nombre
 "$aca/up-memoria" --solo-ajuste "$dir"
 
 claude=claude
-[ "${repo%%/*}" = "$yo" ] || claude="claude --permission-mode default"
+if [ "${repo%%/*}" = "$yo" ]; then
+  # Tu repo: que Claude no pregunte si confiás en la carpeta.
+  f=$HOME/.claude.json
+  [ -s "$f" ] || echo '{}' >"$f"
+  tmp=$(mktemp)
+  jq --arg d "$dir" '.projects[$d].hasTrustDialogAccepted = true' "$f" >"$tmp" && cat "$tmp" >"$f"
+  rm -f "$tmp"
+else
+  claude="claude --permission-mode default"
+fi
+
+# Lo que corre en tmux se arma su entorno (PATH y clave de Claude): así anda
+# aunque `up` se llame desde una terminal que no los tiene.
+correr="export PATH=\"\$HOME/.local/bin:\$PATH\"; [ -f ~/dev/up-priv/claude.env ] && { set -a; . ~/dev/up-priv/claude.env; set +a; }; $claude; exec bash"
 
 sesion=${nombre//[.:]/_}
 if [ -n "${TMUX:-}" ]; then
-  tmux has-session -t "=$sesion" 2>/dev/null || tmux new-session -d -s "$sesion" -c "$dir" "$claude; exec bash"
+  tmux has-session -t "=$sesion" 2>/dev/null || tmux new-session -d -s "$sesion" -c "$dir" "$correr"
   exec tmux switch-client -t "=$sesion"
 fi
-exec tmux new-session -A -s "$sesion" -c "$dir" "$claude; exec bash"
+exec tmux new-session -A -s "$sesion" -c "$dir" "$correr"
