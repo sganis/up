@@ -35,9 +35,15 @@ done
 echo "===== afterwards, in a new terminal"
 check "cargo, bun and oc run" 'as_mint bash --norc --noprofile -c "cargo --version && bun --version && oc version --client" >/dev/null'
 check "Claude is still open in tmux" 'as_mint tmux has-session -t "=$name"'
-check "the memory of $name goes to up-priv/memory" '[ "$(jq -r .autoMemoryDirectory "/home/mint/dev/$name/.claude/settings.local.json")" = "~/dev/up-priv/memory/$name" ]'
+mem=/home/mint/.claude/projects/$(printf %s "/home/mint/dev/$name" | sed 's/[^a-zA-Z0-9]/-/g')/memory
+if [ -d "/home/mint/dev/$name/memoria" ]; then
+  check "Claude has the notes from $name/memoria" 'diff -rq "/home/mint/dev/$name/memoria" "$mem" >/dev/null'
+fi
+check "no settings file was added to the repo" '[ ! -e "/home/mint/dev/$name/.claude/settings.local.json" ]'
 
 dirty=$(for d in /home/mint/dev/*/; do as_mint git -C "$d" status --porcelain; done)
+# down copies Claude's memory back into memoria/: it must be unchanged, or the test would push it.
+[ -d "/home/mint/dev/$name/memoria" ] && ! diff -rq "/home/mint/dev/$name/memoria" "$mem" >/dev/null && dirty="memory changed"
 if [ -z "$dirty" ]; then
   as_mint bash --norc --noprofile -c down >/tmp/down.log 2>&1
   sed 's/^/  down: /' /tmp/down.log

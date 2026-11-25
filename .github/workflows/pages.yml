@@ -29,7 +29,6 @@ jobs:
           shellcheck bin/* test/*.sh
       - name: tests
         run: |
-          bash test/memory.sh
           bash test/down.sh
           bash test/up.sh
       - name: build the site

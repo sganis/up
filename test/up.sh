@@ -16,7 +16,9 @@ cat >"$T/bin/gh" <<'EOF'
 case "$1 $2" in
   "api user") echo me ;;
   "repo list") printf 'me/one\nme/two\n' ;;
-  "repo clone") git init -q "$4" && git -C "$4" remote add origin "https://github.com/$3" && echo "$3" >>"$T/cloned" ;;
+  "repo clone") git init -q "$4" && git -C "$4" remote add origin "https://github.com/$3" && echo "$3" >>"$T/cloned"
+    # a repo that keeps its Claude memory in memoria/
+    if [ "${3##*/}" = withmem ]; then mkdir "$4/memoria" && echo note >"$4/memoria/note.md"; fi ;;
 esac
 EOF
 printf '#!/bin/sh\necho "$*" >"%s/tmux"\n' "$T" >"$T/bin/tmux"   # records how it was opened
@@ -46,13 +48,21 @@ run mine
 check "without owner: it's yours" '[ "$(cat "$T/cloned")" = me/mine ]'
 check "yours: Claude in your usual mode" '! grep -q -- "--permission-mode" "$T/tmux"'
 check "yours: doesn't ask whether you trust the folder" '[ "$(jq -r --arg d "$HOME/dev/mine" ".projects[\$d].hasTrustDialogAccepted" "$HOME/.claude.json")" = true ]'
-check "Claude loads the key even if the terminal doesn't have it" 'grep -q "up-priv/claude.env" "$T/tmux"'
+check "Claude loads the key even if the terminal doesn't have it" 'grep -q "config/up/claude.env" "$T/tmux"'
 check "Claude is found even if the terminal lacks ~/.local/bin" 'grep -q "\.local/bin" "$T/tmux"'
 check "cargo and bun are found in Claude's terminal" 'grep -q "\.cargo/bin" "$T/tmux" && grep -q "\.bun/bin" "$T/tmux"'
 
 run other/thing
 check "someone else's: Claude asks before everything" 'grep -q -- "claude --permission-mode default" "$T/tmux"'
 check "someone else's: does ask whether you trust the folder" '[ "$(jq -r --arg d "$HOME/dev/thing" ".projects[\$d].hasTrustDialogAccepted // false" "$HOME/.claude.json")" = false ]'
+
+MEMDIR=$HOME/.claude/projects/$(printf %s "$HOME/dev/withmem" | sed 's/[^a-zA-Z0-9]/-/g')/memory
+run withmem
+check "memoria/: copied to where Claude looks for it" '[ "$(cat "$MEMDIR/note.md")" = note ]'
+echo edited >"$MEMDIR/note.md"
+run withmem
+check "memoria/: doesn't overwrite notes from this session" '[ "$(cat "$MEMDIR/note.md")" = edited ]'
+check "without memoria/: no memory folder is created" '[ ! -e "$HOME/.claude/projects/$(printf %s "$HOME/dev/mine" | sed "s/[^a-zA-Z0-9]/-/g")" ]'
 
 rm -f "$T/cloned" "$T/tmux"
 printf '2\n' | "$UP" >/dev/null 2>&1

@@ -10,7 +10,7 @@ Always with `https://`: without it, the first request goes unencrypted and, on a
 
 1. Installs `git`, `gh`, `tmux`, `vim`, `ripgrep`, `jq`, `ffmpeg`, `rclone`, `qrencode`, what's needed to compile, and the latest `yt-dlp`.
 2. Logs in to GitHub: it shows a QR that opens github.com/login/device on your phone, where you type the code.
-3. Downloads the private repo `<user>/up-priv` and takes the settings from there.
+3. Downloads your private repo `acto4` and takes the settings from its `up/` folder.
 4. Sets the time zone.
 5. Installs `oc` (OpenShift) and `kubectl`, Rust (rustup), Bun and Claude Code.
 
@@ -35,15 +35,16 @@ On someone else's repo, Claude asks before doing anything: the repo could carry 
 
 - In private repos it commits everything that changed. In public ones it doesn't commit for you: it pushes your commits and lists what's uncommitted.
 - It never pushes files over 50 MB nor `.claude/settings.local.json`.
-- It doesn't power off either if there are unpushed commits on another branch, a `stash`, a half-done merge, Claude memory outside `up-priv`, or folders without git in `~/dev`.
+- It doesn't power off either if there are unpushed commits on another branch, a `stash`, a half-done merge, or folders without git in `~/dev`.
+- Claude memory of a repo without `memoria/` is not kept: it warns.
 
 ## Claude's memory
 
-`up-memory` keeps Claude's memory for each project in `up-priv/memory/<project>/`, not in the project's repo, which may be public. It tells Claude through `autoMemoryDirectory` in `.claude/settings.local.json`, which git ignores. It runs as Claude's `SessionStart` hook and pushes `up-priv` in the background.
+A repo can keep its Claude memory in a `memoria/` folder (acto4 does; keep it only in private repos). `up` copies it to where Claude looks for it, and `down` copies it back before pushing. Nothing else is touched, and nothing runs in the background.
 
-## `up-priv`
+## `acto4/up/`
 
-This repo is public and has nothing private. The private part goes in `<user>/up-priv`:
+This repo is public and has nothing private. The private part goes in the `up/` folder of your private repo `acto4` (the name is set at the top of `setup.sh`):
 
 | File | What it is |
 |---|---|
@@ -52,12 +53,10 @@ This repo is public and has nothing private. The private part goes in `<user>/up
 | `bashrc` | prompt and aliases |
 | `CLAUDE.md` | Claude's global instructions |
 | `settings.json` | Claude settings |
-| `memory/` | Claude's memory, one folder per project |
 
 ## Tests
 
 ```sh
-bash test/memory.sh
 bash test/down.sh
 bash test/up.sh
 bash test/mint.sh <repo>   # setup.sh end to end in a Linux Mint container (Docker)

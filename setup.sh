@@ -6,13 +6,15 @@
 #     curl -fL https://sganis.github.io/up | sh
 #
 # This repo is public: no keys, no data. The private part (settings, Claude
-# key, Claude memory) lives in the private repo <user>/up-priv, and is only
-# downloaded after you approve GitHub access from your phone.
+# key) lives in the up/ folder of the private repo <user>/acto4, which is only
+# downloaded after you approve GitHub access from your phone. A repo's Claude
+# memory lives in its own memoria/ folder (see `up` and `down`).
 #
 # When it's done, in the same terminal: `up` opens a project with Claude,
 # `down` pushes everything and powers off.
 
 UP=sganis/up   # this repo
+PRIV=acto4      # your private repo with the settings in up/
 
 step() { printf '\n\033[1m▸ %s\033[0m\n' "$*"; }
 warn() { printf '\033[33m! %s\033[0m\n' "$*"; }
@@ -61,14 +63,14 @@ main() {
   no_cdrom
   # Every step is skipped when it's already done: running it again downloads nothing.
   missing=
-  for c in curl git gh tmux vim rg jq ffmpeg rclone python3 qrencode unzip cc pkg-config; do
+  for c in curl git gh tmux vim rg jq ffmpeg rclone rsync python3 qrencode unzip cc pkg-config; do
     command -v "$c" >/dev/null || missing=1
   done
   if [ -n "$missing" ]; then
     # Update errors are shown but don't stop: if something is really missing, the install fails.
     sudo apt-get -qq update || warn "apt-get update had errors (above)"
     sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y \
-      curl git gh tmux vim ripgrep jq ffmpeg rclone python3 qrencode unzip build-essential pkg-config libssl-dev \
+      curl git gh tmux vim ripgrep jq ffmpeg rclone rsync python3 qrencode unzip build-essential pkg-config libssl-dev \
       >/dev/null || die "could not install the packages (apt's error is above)"
   fi
   # yt-dlp from its own site: the apt one is old and YouTube changes often.
@@ -88,14 +90,14 @@ main() {
   gh auth setup-git
   me=$(gh api user --jq .login)
 
-  step "Private settings ($me/up-priv)"
+  step "Private settings ($me/$PRIV/up)"
   mkdir -p "$HOME/dev"
-  clone "$me/up-priv"
+  clone "$me/$PRIV"
   clone "$UP"
-  PRIV=$HOME/dev/up-priv
+  CONF=$HOME/dev/$PRIV/up
   GIT_NAME='' GIT_EMAIL='' TIMEZONE=''
   # shellcheck source=/dev/null
-  [ -f "$PRIV/up.conf" ] && . "$PRIV/up.conf"
+  [ -f "$CONF/up.conf" ] && . "$CONF/up.conf"
   [ -z "$GIT_NAME" ] || git config --global user.name "$GIT_NAME"
   [ -z "$GIT_EMAIL" ] || git config --global user.email "$GIT_EMAIL"
   git config --global init.defaultBranch main
@@ -110,16 +112,19 @@ main() {
   mkdir -p "$HOME/.local/bin" "$HOME/.claude"
   # Commands go to /usr/local/bin: they work in any terminal, this one too,
   # without opening another one or reloading anything.
-  for c in up down vpn drive up-memory; do sudo ln -sf "$HOME/dev/up/bin/$c" "/usr/local/bin/$c"; done
+  for c in up down vpn drive; do sudo ln -sf "$HOME/dev/up/bin/$c" "/usr/local/bin/$c"; done
   if ! grep -q '^# up:' "$HOME/.bashrc" 2>/dev/null; then
     cat >>"$HOME/.bashrc" <<'EOF'
 
-# up: Claude key and personal shell settings, from up-priv
+# up: Claude key and personal shell settings
 export PATH="$HOME/.local/bin:$PATH"
-if [ -f ~/dev/up-priv/claude.env ]; then set -a; . ~/dev/up-priv/claude.env; set +a; fi
-if [ -f ~/dev/up-priv/bashrc ]; then . ~/dev/up-priv/bashrc; fi
+if [ -f ~/.config/up/claude.env ]; then set -a; . ~/.config/up/claude.env; set +a; fi
+if [ -f ~/.config/up/bashrc ]; then . ~/.config/up/bashrc; fi
 EOF
   fi
+  # Where the other commands look for the Claude key and the shell settings.
+  mkdir -p "$HOME/.config"
+  ln -sfn "$CONF" "$HOME/.config/up"
 
   # oc (OpenShift) and kubectl, from the official site: they're not in apt.
   if ! command -v oc >/dev/null; then
@@ -145,31 +150,24 @@ EOF
   step "Claude"
   [ -x "$HOME/.local/bin/claude" ] || curl -fsSL https://claude.ai/install.sh | bash
   [ -x "$HOME/.local/bin/claude" ] || die "Claude was not installed"
-  # `claude` in any terminal, with the up-priv key even if the terminal doesn't have it.
+  # `claude` in any terminal, with the key even if the terminal doesn't have it.
   sudo tee /usr/local/bin/claude >/dev/null <<'EOF'
 #!/bin/sh
-if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -f "$HOME/dev/up-priv/claude.env" ]; then
-  set -a; . "$HOME/dev/up-priv/claude.env"; set +a
+if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -f "$HOME/.config/up/claude.env" ]; then
+  set -a; . "$HOME/.config/up/claude.env"; set +a
 fi
 exec "$HOME/.local/bin/claude" "$@"
 EOF
   sudo chmod +x /usr/local/bin/claude
   # Global instructions: a link, so whatever changes here gets pushed by `down`.
-  [ -f "$PRIV/CLAUDE.md" ] && ln -sf "$PRIV/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
-  # Settings from up-priv, plus the hook that keeps the memory in up-priv.
-  # shellcheck disable=SC2016 # $HOME is expanded by Claude when it runs the hook
-  hook='{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"$HOME/dev/up/bin/up-memory"}]}]}}'
-  if [ -f "$PRIV/settings.json" ]; then
-    jq --argjson h "$hook" '. * $h' "$PRIV/settings.json" >"$HOME/.claude/settings.json"
-  else
-    printf '%s\n' "$hook" >"$HOME/.claude/settings.json"
-  fi
+  [ -f "$CONF/CLAUDE.md" ] && ln -sf "$CONF/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+  [ -f "$CONF/settings.json" ] && cp "$CONF/settings.json" "$HOME/.claude/settings.json"
   # Without this, Claude asks you to log in even though it has the key.
   f=$HOME/.claude.json
   [ -f "$f" ] || echo '{}' >"$f"
   jq '.hasCompletedOnboarding = true' "$f" >"$f.tmp" && mv "$f.tmp" "$f"
 
-  [ -f "$PRIV/claude.env" ] || warn "up-priv has no claude.env: Claude will ask you to log in"
+  [ -f "$CONF/claude.env" ] || warn "$PRIV/up has no claude.env: Claude will ask you to log in"
   step "Done. In this same terminal:"
   echo "  up      open a project (Claude, in tmux)"
   echo "  down    push everything and power off"

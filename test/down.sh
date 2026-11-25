@@ -136,11 +136,29 @@ check "settings.local.json: not pushed" '! git --git-dir="$T/a.git" ls-tree -r -
 check "settings.local.json: the rest is" 'remote a last.md | grep -q last'
 rm -rf "$HOME/dev/a/.claude"
 
-# 11. Claude memory outside up-priv, or a folder without git in ~/dev: doesn't power off
+# 11. A repo with memoria/: Claude's memory goes back there and is pushed
+repo m
+mkdir -p "$HOME/dev/m/memoria" && echo a >"$HOME/dev/m/memoria/a.md" && echo b >"$HOME/dev/m/memoria/b.md"
+git -C "$HOME/dev/m" add -A && git -C "$HOME/dev/m" commit -qm memory && git -C "$HOME/dev/m" push -q
+MEMDIR=$HOME/.claude/projects/$(printf %s "$HOME/dev/m" | sed 's/[^a-zA-Z0-9]/-/g')/memory
+mkdir -p "$MEMDIR" && echo a2 >"$MEMDIR/a.md" && echo c >"$MEMDIR/c.md"   # a changed, b deleted, c new
+run
+check "memoria/: a changed note is pushed" 'remote m memoria/a.md | grep -q a2'
+check "memoria/: a new note is pushed" 'remote m memoria/c.md | grep -q c'
+check "memoria/: a deleted note is deleted" '! remote m memoria/b.md >/dev/null'
+check "memoria/: powers off" '[ "$code" = 0 ] && powered_off'
+rm -rf "$MEMDIR"
+run
+check "memoria/: without Claude memory this session, memoria/ is left alone" 'remote m memoria/a.md | grep -q a2 && [ -f "$HOME/dev/m/memoria/c.md" ]'
+
+# 12. Claude memory of a repo without memoria/: warns, still powers off
 mkdir -p "$HOME/.claude/projects/-home-mint/memory" && echo note >"$HOME/.claude/projects/-home-mint/memory/n.md"
 run
-check "loose memory: doesn't power off and names it" '[ "$code" != 0 ] && ! powered_off && says "-home-mint/memory"'
+check "loose memory: warns and names it" 'says "-home-mint/memory" && says "not kept"'
+check "loose memory: still powers off" '[ "$code" = 0 ] && powered_off'
 rm -rf "$HOME/.claude/projects/-home-mint"
+
+# 13. A folder without git in ~/dev: doesn't power off
 mkdir -p "$HOME/dev/draft" && echo x >"$HOME/dev/draft/x.txt"
 run
 check "folder without git: doesn't power off and names it" '[ "$code" != 0 ] && ! powered_off && says "draft"'

@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # down — before powering off.
 #
-# Pushes the changes of every repo in ~/dev, with their worktrees, including
-# Claude's memory (which lives in up-priv). If everything got pushed, logs out
-# of Tailscale and powers off. If something couldn't be pushed, says what and
-# doesn't power off.
+# Pushes the changes of every repo in ~/dev, with their worktrees. A repo that
+# keeps its Claude memory in a memoria/ folder gets the memory copied back there
+# first, so it's pushed too. If everything got pushed, logs out of Tailscale and
+# powers off. If something couldn't be pushed, says what and doesn't power off.
 #
 # - In private repos it commits everything that changed. In public ones it
 #   doesn't commit for you: it pushes your commits and lists what's uncommitted.
 # - It never pushes files over 50 MB (a video downloaded by mistake) nor
 #   .claude/settings.local.json (the memory setting).
 # - It doesn't power off if there are unpushed commits on another branch, a
-#   stash, a half-done merge, Claude memory outside up-priv, or folders without
-#   git in ~/dev.
+#   stash, a half-done merge, or folders without git in ~/dev.
+# - Claude memory of a repo without memoria/ is not kept: it warns, that's all.
 set -uo pipefail
 shopt -s nullglob
 export GIT_TERMINAL_PROMPT=0   # never ask for a user or a password
@@ -41,6 +41,9 @@ commit_all() {
   rm -f "$list"
   git diff --cached --quiet || git commit -qm "down: $(hostname -s) $(date '+%F %R')"
 }
+
+# memory_dir <repo dir>: where Claude keeps that repo's memory.
+memory_dir() { printf '%s/.claude/projects/%s/memory' "$HOME" "$(printf %s "$1" | sed 's/[^a-zA-Z0-9]/-/g')"; }
 
 # push_dir <dir>: gets that working copy onto GitHub. Fails if anything is left.
 push_dir() (
@@ -92,12 +95,19 @@ push_dir() (
 
 cd "$HOME/dev" || exit 1
 failed=()
+kept=()
 for d in */; do
   d=${d%/}
   if [ ! -e "$d/.git" ]; then
     echo "✗ $d: not a git repo, and what's in it is lost at shutdown"
     failed+=("$d")
     continue
+  fi
+  # The repo's Claude memory back into its memoria/ folder (only if there is some).
+  mem=$(memory_dir "$HOME/dev/$d")
+  if [ -d "$HOME/dev/$d/memoria" ] && [ -d "$mem" ] && [ -n "$(ls -A "$mem")" ]; then
+    rsync -a --delete "$mem/" "$HOME/dev/$d/memoria/"
+    kept+=("$mem")
   fi
   git -C "$d" worktree prune
   copies=()
@@ -117,10 +127,9 @@ for d in */; do
 done
 
 for m in "$HOME"/.claude/projects/*/memory; do
-  if [ -d "$m" ] && [ ! -L "$m" ] && [ -n "$(ls -A "$m")" ]; then
-    echo "✗ Claude memory outside up-priv, lost at shutdown: $m"
-    failed+=("memory")
-  fi
+  [ -d "$m" ] && [ -n "$(ls -A "$m")" ] || continue
+  case " ${kept[*]-} " in *" $m "*) continue ;; esac
+  echo "! Claude memory not kept (its repo has no memoria/ folder), lost at shutdown: $m"
 done
 
 if [ ${#failed[@]} -gt 0 ]; then
