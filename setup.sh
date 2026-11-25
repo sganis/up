@@ -29,22 +29,11 @@ clonar() {
 }
 
 # En el live, apt-get update siempre falla por la fuente cdrom:// del USB, que
-# no tiene archivo Release. El resto se actualiza igual: el error no importa.
+# no tiene archivo Release. El resto se actualiza igual: ese error no importa y
+# no se muestra. Los demás errores se muestran, pero no frenan: si de verdad
+# falta algo, falla la instalación.
 actualizar() {
-  sudo apt-get -qq update >/dev/null 2>&1 || true
-}
-
-# instalar <paquetes>: con reintentos, porque al arrancar el live a veces apt
-# está ocupado. Si falta algo de verdad, acá se ve.
-instalar() {
-  n=0
-  until sudo DEBIAN_FRONTEND=noninteractive apt-get -qq -o DPkg::Lock::Timeout=120 install -y "$@" >/dev/null; do
-    n=$((n + 1))
-    [ "$n" -lt 3 ] || falla "no pude instalar: $*"
-    aviso "apt-get install falló; reintento en 20 segundos"
-    sleep 20
-    actualizar
-  done
+  sudo apt-get -qq update 2>&1 | grep -v -i -e cdrom -e '^N: ' || true
 }
 
 # Todo adentro de main: así sh lee el script entero antes de empezar.
@@ -58,7 +47,8 @@ main() {
 
   paso "Programas"
   actualizar
-  instalar curl git gh tmux ripgrep jq ffmpeg rclone python3
+  sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y \
+    curl git gh tmux ripgrep jq ffmpeg rclone python3 >/dev/null || falla "no pude instalar los programas (el error de apt está arriba)"
   # yt-dlp de su sitio: el de apt viene viejo y YouTube cambia seguido.
   { sudo curl -fsSL -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp &&
     sudo chmod +x /usr/local/bin/yt-dlp; } || aviso "no pude bajar yt-dlp"
