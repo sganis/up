@@ -39,20 +39,6 @@ apt() {
   done
 }
 
-# teclado <es|latam|us>: el de up.conf, salvo que se elija otro.
-# Se pregunta porque depende del teclado de la máquina, no de uno.
-teclado() {
-  t=$1
-  if [ -n "$tty" ]; then
-    printf 'Teclado: 1 España, 2 Latinoamérica, 3 EE. UU. [Enter: %s] ' "$t"
-    read -r r || r=
-    case $r in 1) t=es ;; 2) t=latam ;; 3) t=us ;; esac
-  fi
-  setxkbmap "$t" 2>/dev/null || true
-  gsettings set org.gnome.libgnomekbd.keyboard layouts "['$t']" 2>/dev/null || true
-  gsettings set org.cinnamon.desktop.input-sources sources "[('xkb', '$t')]" 2>/dev/null || true
-}
-
 # Todo adentro de main: así sh lee el script entero antes de empezar.
 main() {
   set -eu
@@ -84,15 +70,14 @@ main() {
   clonar "$yo/up-priv"
   clonar "$UP"
   PRIV=$HOME/dev/up-priv
-  GIT_NAME='' GIT_EMAIL='' TECLADO=es ZONA=''
+  GIT_NAME='' GIT_EMAIL='' ZONA=''
   # shellcheck source=/dev/null
   [ -f "$PRIV/up.conf" ] && . "$PRIV/up.conf"
   [ -z "$GIT_NAME" ] || git config --global user.name "$GIT_NAME"
   [ -z "$GIT_EMAIL" ] || git config --global user.email "$GIT_EMAIL"
   git config --global init.defaultBranch main
 
-  paso "Teclado y hora"
-  teclado "$TECLADO"
+  paso "Hora"
   if [ -n "$ZONA" ]; then
     sudo timedatectl set-timezone "$ZONA" 2>/dev/null ||
       sudo ln -sf "/usr/share/zoneinfo/$ZONA" /etc/localtime || aviso "no pude poner la hora de $ZONA"

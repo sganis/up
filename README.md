@@ -11,7 +11,7 @@ Siempre con `https://`: sin eso, el primer pedido viaja sin cifrar y en una red 
 1. Instala `git`, `gh`, `tmux`, `ripgrep`, `jq`, `ffmpeg`, `rclone` y la última versión de `yt-dlp`.
 2. Se conecta a GitHub con un código que se aprueba desde el celular (github.com/login/device).
 3. Baja el repo privado `<usuario>/up-priv` y toma de ahí la configuración.
-4. Pregunta el teclado y pone la zona horaria.
+4. Pone la zona horaria.
 5. Instala Claude Code.
 6. Instala Tailscale y lo conecta con un QR que se aprueba desde el celular (Ctrl-C lo saltea).
 7. Abre `up`.
@@ -45,7 +45,7 @@ Este repo es público y no tiene nada privado. Lo privado va en `<usuario>/up-pr
 
 | Archivo | Qué es |
 |---|---|
-| `up.conf` | `GIT_NAME`, `GIT_EMAIL`, `TECLADO` (`es`, `latam`, `us`), `ZONA` |
+| `up.conf` | `GIT_NAME`, `GIT_EMAIL`, `ZONA` |
 | `claude.env` | `CLAUDE_CODE_OAUTH_TOKEN=...`, de `claude setup-token` |
 | `bashrc` | prompt y alias |
 | `CLAUDE.md` | instrucciones globales de Claude |
