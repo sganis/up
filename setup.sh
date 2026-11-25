@@ -28,12 +28,13 @@ clonar() {
   fi
 }
 
-# En el live, apt-get update siempre falla por la fuente cdrom:// del USB, que
-# no tiene archivo Release. El resto se actualiza igual: ese error no importa y
-# no se muestra. Los demás errores se muestran, pero no frenan: si de verdad
-# falta algo, falla la instalación.
+# El live trae una fuente cdrom:// (el USB) sin archivo Release, que hace
+# fallar todo apt-get update, también el del instalador de Tailscale. No sirve
+# para nada: se desactiva. Los demás errores de update se muestran pero no
+# frenan: si de verdad falta algo, falla la instalación.
 actualizar() {
-  sudo apt-get -qq update 2>&1 | grep -v -i -e cdrom -e '^N: ' || true
+  sudo sed -i 's/^deb cdrom:/# deb cdrom:/' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true
+  sudo apt-get -qq update || aviso "apt-get update dio errores (arriba)"
 }
 
 # Todo adentro de main: así sh lee el script entero antes de empezar.
