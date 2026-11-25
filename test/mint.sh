@@ -5,7 +5,7 @@
 # - con systemd a medias: instala Tailscale, pero conectarlo falla (el QR no se
 #   puede probar acá) y setup.sh tiene que seguir igual.
 # GitHub entra con el acceso de esta máquina (gh auth token); Claude, con la
-# clave de up-priv. Al final prueba up y bye desde una terminal nueva.
+# clave de up-priv. Al final prueba up y down desde una terminal nueva.
 #
 #     bash test/mint.sh <repo para abrir con up>
 #

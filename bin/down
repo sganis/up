@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bye — antes de apagar.
+# down — antes de apagar.
 #
 # Sube los cambios de todos los repos de ~/dev, con sus worktrees, incluida la
 # memoria de Claude (que está en up-priv). Si todo subió, cierra Tailscale y
@@ -37,7 +37,7 @@ commitear() {
     return 1
   fi
   rm -f "$lista"
-  git diff --cached --quiet || git commit -qm "bye: $(hostname -s) $(date '+%F %R')"
+  git diff --cached --quiet || git commit -qm "down: $(hostname -s) $(date '+%F %R')"
 }
 
 # subir <carpeta>: deja esa copia de trabajo en GitHub. Sale con error si queda algo.

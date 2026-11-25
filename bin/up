@@ -61,7 +61,7 @@ fi
 
 # Lo que corre en tmux se arma su entorno (PATH y clave de Claude): así anda
 # aunque `up` se llame desde una terminal que no los tiene.
-correr="export PATH=\"\$HOME/.local/bin:\$PATH\"; [ -f ~/dev/up-priv/claude.env ] && { set -a; . ~/dev/up-priv/claude.env; set +a; }; $claude; exec bash"
+correr="export PATH=\"\$HOME/.local/bin:\$HOME/.cargo/bin:\$PATH\"; [ -f ~/dev/up-priv/claude.env ] && { set -a; . ~/dev/up-priv/claude.env; set +a; }; $claude; exec bash"
 
 sesion=${nombre//[.:]/_}
 if [ -n "${TMUX:-}" ]; then

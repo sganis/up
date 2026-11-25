@@ -30,7 +30,7 @@ jobs:
       - name: pruebas
         run: |
           bash test/memoria.sh
-          bash test/bye.sh
+          bash test/down.sh
           bash test/up.sh
       - name: armar el sitio
         run: |

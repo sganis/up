@@ -30,17 +30,17 @@ chequear "la fuente cdrom quedó desactivada" '! grep -q "^deb cdrom" /etc/apt/s
 chequear "si Tailscale no conecta, avisa y sigue" 'grep -aq "Tailscale" /tmp/live.log'
 
 echo "===== después, en una terminal nueva"
-chequear "up, bye y up-memoria están en el PATH" 'como bash --norc --noprofile -c "command -v up && command -v bye && command -v up-memoria" >/dev/null'
+chequear "up, down y up-memoria están en el PATH" 'como bash --norc --noprofile -c "command -v up && command -v down && command -v up-memoria" >/dev/null'
 chequear "Claude sigue abierto en tmux" 'como tmux has-session -t "=$nombre"'
 chequear "la memoria de $nombre va a up-priv" '[ "$(jq -r .autoMemoryDirectory "/home/mint/dev/$nombre/.claude/settings.local.json")" = "~/dev/up-priv/memoria/$nombre" ]'
 
 sucios=$(for d in /home/mint/dev/*/; do como git -C "$d" status --porcelain; done)
 if [ -z "$sucios" ]; then
-  como bash --norc --noprofile -c bye >/tmp/bye.log 2>&1
-  sed 's/^/  bye: /' /tmp/bye.log
-  chequear "bye revisa todo y llega a apagar" 'grep -q "Todo subido" /tmp/bye.log'
+  como bash --norc --noprofile -c down >/tmp/down.log 2>&1
+  sed 's/^/  down: /' /tmp/down.log
+  chequear "down revisa todo y llega a apagar" 'grep -q "Todo subido" /tmp/down.log'
 else
-  echo "MAL  quedaron cambios en los repos; no corro bye para no subir nada desde la prueba:"
+  echo "MAL  quedaron cambios en los repos; no corro down para no subir nada desde la prueba:"
   echo "$sucios"
   fallas=$((fallas + 1))
 fi

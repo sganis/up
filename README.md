@@ -8,13 +8,14 @@ curl -fsSL https://sganis.github.io/up | sh
 
 Siempre con `https://`: sin eso, el primer pedido viaja sin cifrar y en una red ajena te pueden dar otro script.
 
-1. Instala `git`, `gh`, `tmux`, `ripgrep`, `jq`, `ffmpeg`, `rclone`, `qrencode` y la última versión de `yt-dlp`.
+1. Instala `git`, `gh`, `tmux`, `ripgrep`, `jq`, `ffmpeg`, `rclone`, `qrencode`, lo necesario para compilar, y la última versión de `yt-dlp`.
 2. Se conecta a GitHub: muestra un QR que abre github.com/login/device en el celular, y ahí se escribe el código.
 3. Baja el repo privado `<usuario>/up-priv` y toma de ahí la configuración.
 4. Pone la zona horaria.
-5. Instala Claude Code.
+5. Instala Rust (rustup) y Claude Code.
 6. Instala Tailscale y lo conecta con un QR que se aprueba desde el celular (Ctrl-C lo saltea).
-7. Abre `up`.
+
+Al terminar, en la misma terminal ya andan `up`, `down`, `claude`, `cargo` y `drive`. Si algo ya estaba hecho, lo saltea: correrlo de nuevo no baja nada otra vez.
 
 En la máquina no se escribe ninguna contraseña.
 
@@ -24,12 +25,12 @@ En la máquina no se escribe ninguna contraseña.
 up                # tus repos, para elegir: lo clona en ~/dev y abre Claude en tmux
 up proyecto       # uno tuyo
 up dueño/repo     # cualquier repo de GitHub (también sirve la URL)
-bye               # sube los cambios de todos los repos de ~/dev, cierra Tailscale y apaga
+down              # sube los cambios de todos los repos de ~/dev, cierra Tailscale y apaga
 ```
 
 En un repo ajeno, Claude pide permiso antes de cada cosa: el repo podría traer instrucciones escondidas, y la máquina tiene acceso a todos tus repos.
 
-`bye` no apaga si algo no se pudo subir, y dice qué:
+`down` no apaga si algo no se pudo subir, y dice qué:
 
 - En los repos privados commitea todo lo que cambió. En los públicos no commitea por vos: sube tus commits y nombra lo que quedó sin commitear.
 - Nunca sube archivos de más de 50 MB ni `.claude/settings.local.json`.
@@ -56,7 +57,7 @@ Este repo es público y no tiene nada privado. Lo privado va en `<usuario>/up-pr
 
 ```sh
 bash test/memoria.sh
-bash test/bye.sh
+bash test/down.sh
 bash test/up.sh
 bash test/mint.sh <repo>   # setup.sh entero en un contenedor de Linux Mint (Docker)
 ```

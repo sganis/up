@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Prueba de bin/bye con un HOME de mentira y sudo/systemctl/tailscale/gh falsos:  bash test/bye.sh
+# Prueba de bin/down con un HOME de mentira y sudo/systemctl/tailscale/gh falsos:  bash test/down.sh
 # shellcheck disable=SC2016,SC2034,SC2015 # las comprobaciones van entre comillas simples a propósito: las evalúa chequear
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
-BYE=$PWD/bin/bye
+DOWN=$PWD/bin/down
 T=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$T"' EXIT
 export HOME=$T/home GIT_CONFIG_GLOBAL=$T/gitconfig GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME=$T/xdg
@@ -33,7 +33,7 @@ repo() {   # repo <nombre>: clon con remoto local y un primer commit subido
 }
 remoto() { git --git-dir="$T/$1.git" show "main:$2" 2>/dev/null; }
 apago() { grep -q "systemctl poweroff" "$T/llamadas" 2>/dev/null; }
-correr() { rm -f "$T/llamadas"; salida=$("$BYE" 2>&1); codigo=$?; }
+correr() { rm -f "$T/llamadas"; salida=$("$DOWN" 2>&1); codigo=$?; }
 dice() { printf %s "$salida" | grep -qF -- "$1"; }
 
 # 1. Todo sube: cambios sin commit, commits sin subir, y un repo sin cambios

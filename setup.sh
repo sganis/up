@@ -9,8 +9,8 @@
 # clave de Claude, memoria de Claude) está en el repo privado <usuario>/up-priv,
 # y se baja recién después de aprobar el acceso a GitHub desde el celular.
 #
-# Al terminar abre `up`: elegís un proyecto y se abre Claude ahí.
-# Antes de apagar: `bye`.
+# Al terminar, en la misma terminal: `up` abre un proyecto con Claude.
+# Antes de apagar: `down`.
 
 UP=sganis/up   # este repo
 
@@ -61,11 +61,11 @@ main() {
   sin_cdrom
   # Cada paso se saltea si ya está hecho: correrlo de nuevo no baja nada otra vez.
   falta=
-  for c in curl git gh tmux rg jq ffmpeg rclone python3 qrencode; do command -v "$c" >/dev/null || falta=1; done
+  for c in curl git gh tmux rg jq ffmpeg rclone python3 qrencode cc pkg-config; do command -v "$c" >/dev/null || falta=1; done
   if [ -n "$falta" ]; then
     actualizar
     sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y \
-      curl git gh tmux ripgrep jq ffmpeg rclone python3 qrencode >/dev/null || falla "no pude instalar los programas (el error de apt está arriba)"
+      curl git gh tmux ripgrep jq ffmpeg rclone python3 qrencode build-essential pkg-config libssl-dev >/dev/null || falla "no pude instalar los programas (el error de apt está arriba)"
   fi
   # yt-dlp de su sitio: el de apt viene viejo y YouTube cambia seguido.
   if [ ! -x /usr/local/bin/yt-dlp ]; then
@@ -106,16 +106,24 @@ main() {
   mkdir -p "$HOME/.local/bin" "$HOME/.claude"
   # Los comandos van a /usr/local/bin: así andan en cualquier terminal, también
   # en esta, sin abrir otra ni recargar nada.
-  for c in up bye drive up-memoria; do sudo ln -sf "$HOME/dev/up/bin/$c" "/usr/local/bin/$c"; done
+  for c in up down drive up-memoria; do sudo ln -sf "$HOME/dev/up/bin/$c" "/usr/local/bin/$c"; done
   if ! grep -q '^# up:' "$HOME/.bashrc" 2>/dev/null; then
     cat >>"$HOME/.bashrc" <<'FIN'
 
-# up: comandos (up, bye), clave de Claude y configuración propia, de up-priv
+# up: comandos (up, down), clave de Claude y configuración propia, de up-priv
 export PATH="$HOME/.local/bin:$PATH"
 if [ -f ~/dev/up-priv/claude.env ]; then set -a; . ~/dev/up-priv/claude.env; set +a; fi
 if [ -f ~/dev/up-priv/bashrc ]; then . ~/dev/up-priv/bashrc; fi
 FIN
   fi
+
+  paso "Rust"
+  # Con rustup, el instalador oficial. Agrega ~/.cargo/bin a ~/.bashrc para las
+  # terminales nuevas; los enlaces en /usr/local/bin hacen que ande ya en esta.
+  if [ ! -x "$HOME/.cargo/bin/rustup" ]; then
+    curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y -q || aviso "no pude instalar Rust"
+  fi
+  for f in "$HOME"/.cargo/bin/*; do [ -x "$f" ] && sudo ln -sf "$f" /usr/local/bin/; done
 
   paso "Claude"
   [ -x "$HOME/.local/bin/claude" ] || curl -fsSL https://claude.ai/install.sh | bash
@@ -129,7 +137,7 @@ fi
 exec "$HOME/.local/bin/claude" "$@"
 FIN
   sudo chmod +x /usr/local/bin/claude
-  # Instrucciones globales: un enlace, así lo que cambie acá lo sube bye.
+  # Instrucciones globales: un enlace, así lo que cambie acá lo sube down.
   [ -f "$PRIV/CLAUDE.md" ] && ln -sf "$PRIV/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
   # Configuración de up-priv, más el hook que guarda la memoria en up-priv.
   # shellcheck disable=SC2016 # $HOME lo expande Claude al correr el hook
@@ -159,18 +167,10 @@ FIN
     aviso "sin systemd: no instalo Tailscale"
   fi
 
-  paso "Listo"
-  export PATH="$HOME/.local/bin:$PATH"
-  if [ -f "$PRIV/claude.env" ]; then
-    set -a
-    # shellcheck source=/dev/null
-    . "$PRIV/claude.env"
-    set +a
-  else
-    aviso "up-priv no tiene claude.env: Claude te va a pedir que entres"
-  fi
-  echo "up: abrir un proyecto.   bye: subir todo y apagar."
-  if [ -n "$tty" ]; then exec /usr/local/bin/up; fi
+  [ -f "$PRIV/claude.env" ] || aviso "up-priv no tiene claude.env: Claude te va a pedir que entres"
+  paso "Listo. En esta misma terminal:"
+  echo "  up      abrir un proyecto (Claude, en tmux)"
+  echo "  down    subir todo y apagar"
 }
 
 main "$@"
