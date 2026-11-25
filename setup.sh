@@ -48,9 +48,12 @@ no_cdrom() {
 # Everything inside main: sh reads the whole script before running anything.
 main() {
   set -eu
-  # With `curl | sh`, stdin is the script: questions go to the terminal.
+  # With `curl | sh`, stdin is the script itself, and it must stay that way: if
+  # it were switched to the terminal, sh would keep reading "more script" from
+  # the keyboard at the end and hang. Only the GitHub login, which asks you to
+  # press Enter, reads from the terminal.
   # (In a subshell: if /dev/tty can't be opened, dash kills the whole shell.)
-  if (exec </dev/tty) 2>/dev/null; then exec </dev/tty; tty=1; else tty=; fi
+  if (exec </dev/tty) 2>/dev/null; then tty=1; else tty=; fi
   [ "$(id -u)" != 0 ] || die "run it as a normal user, not as root"
   command -v apt-get >/dev/null || die "needs Linux with apt (Mint, Ubuntu, Debian)"
 
@@ -80,7 +83,7 @@ main() {
     echo "Scan this QR with your phone (it opens github.com/login/device),"
     echo "type the code shown below and tap Authorize. Here, press Enter when asked."
     qrencode -t ANSIUTF8 -m 2 https://github.com/login/device || true
-    GH_BROWSER=true gh auth login --hostname github.com --git-protocol https --web --insecure-storage
+    GH_BROWSER=true gh auth login --hostname github.com --git-protocol https --web --insecure-storage </dev/tty
   fi
   gh auth setup-git
   me=$(gh api user --jq .login)
