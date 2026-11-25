@@ -61,11 +61,11 @@ main() {
   sin_cdrom
   # Cada paso se saltea si ya está hecho: correrlo de nuevo no baja nada otra vez.
   falta=
-  for c in curl git gh tmux rg jq ffmpeg rclone python3 qrencode unzip cc pkg-config; do command -v "$c" >/dev/null || falta=1; done
+  for c in curl git gh tmux vim rg jq ffmpeg rclone python3 qrencode unzip cc pkg-config; do command -v "$c" >/dev/null || falta=1; done
   if [ -n "$falta" ]; then
     actualizar
     sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y \
-      curl git gh tmux ripgrep jq ffmpeg rclone python3 qrencode unzip build-essential pkg-config libssl-dev >/dev/null || falla "no pude instalar los programas (el error de apt está arriba)"
+      curl git gh tmux vim ripgrep jq ffmpeg rclone python3 qrencode unzip build-essential pkg-config libssl-dev >/dev/null || falla "no pude instalar los programas (el error de apt está arriba)"
   fi
   # yt-dlp de su sitio: el de apt viene viejo y YouTube cambia seguido.
   if [ ! -x /usr/local/bin/yt-dlp ]; then

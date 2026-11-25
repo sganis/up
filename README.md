@@ -8,7 +8,7 @@ curl -fsSL https://sganis.github.io/up | sh
 
 Siempre con `https://`: sin eso, el primer pedido viaja sin cifrar y en una red ajena te pueden dar otro script.
 
-1. Instala `git`, `gh`, `tmux`, `ripgrep`, `jq`, `ffmpeg`, `rclone`, `qrencode`, lo necesario para compilar, y la última versión de `yt-dlp`.
+1. Instala `git`, `gh`, `tmux`, `vim`, `ripgrep`, `jq`, `ffmpeg`, `rclone`, `qrencode`, lo necesario para compilar, y la última versión de `yt-dlp`.
 2. Se conecta a GitHub: muestra un QR que abre github.com/login/device en el celular, y ahí se escribe el código.
 3. Baja el repo privado `<usuario>/up-priv` y toma de ahí la configuración.
 4. Pone la zona horaria.
