@@ -30,10 +30,21 @@ clonar() {
 
 # El live trae una fuente cdrom:// (el USB) sin archivo Release, que hace
 # fallar todo apt-get update, también el del instalador de Tailscale. No sirve
-# para nada: se desactiva. Los demás errores de update se muestran pero no
-# frenan: si de verdad falta algo, falla la instalación.
+# para nada: se desactiva siempre, al empezar.
+sin_cdrom() {
+  for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
+    [ -f "$f" ] && grep -q '^[[:space:]]*[^#[:space:]].*cdrom:' "$f" &&
+      sudo sed -i 's/^\([[:space:]]*[^#[:space:]].*cdrom:.*\)$/# \1/' "$f"
+  done
+  if grep -s -l '^[[:space:]]*[^#[:space:]].*cdrom:' /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; then
+    aviso "quedó una fuente cdrom: activa en el archivo de arriba; apt-get update va a fallar"
+  fi
+  return 0
+}
+
+# Los errores de update se muestran pero no frenan: si de verdad falta algo,
+# falla la instalación.
 actualizar() {
-  sudo sed -i 's/^deb cdrom:/# deb cdrom:/' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true
   sudo apt-get -qq update || aviso "apt-get update dio errores (arriba)"
 }
 
@@ -47,6 +58,7 @@ main() {
   command -v apt-get >/dev/null || falla "hace falta Linux con apt (Mint, Ubuntu, Debian)"
 
   paso "Programas"
+  sin_cdrom
   # Cada paso se saltea si ya está hecho: correrlo de nuevo no baja nada otra vez.
   falta=
   for c in curl git gh tmux rg jq ffmpeg rclone python3 qrencode; do command -v "$c" >/dev/null || falta=1; done
