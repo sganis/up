@@ -15,7 +15,7 @@ set timeout 240
 send "up $env(REPO)\r"
 expect {
   "trust this folder" { puts "\n### Claude asked whether it trusts the folder"; exit 2 }
-  "for shortcuts" { puts "\n### Claude is open" }
+  -re {Try "|for shortcuts|auto mode on} { puts "\n### Claude is open" }
   "open terminal failed" { puts "\n### tmux didn't start"; exit 1 }
   timeout { puts "\n### timeout waiting for Claude"; exit 1 }
 }

@@ -18,6 +18,11 @@ as_mint() {
 }
 as_mint mkdir -p /home/mint/dev
 as_mint cp -r /src /home/mint/dev/up   # the code from here, not the published one
+# Its origin is a local copy, so nothing in the test can push to the real GitHub.
+as_mint git clone -q --bare /home/mint/dev/up /home/mint/up-origin.git
+as_mint git -C /home/mint/dev/up remote set-url origin /home/mint/up-origin.git
+as_mint git -C /home/mint/dev/up fetch -q origin
+as_mint git -C /home/mint/dev/up branch -q -u origin/main main
 
 echo "===== in one terminal: setup.sh, then up $REPO, then the commands"
 as_mint env REPO="$REPO" expect /src/test/live.exp >/tmp/live.log 2>&1
@@ -25,6 +30,7 @@ code=$?
 clean=$(sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' /tmp/live.log | tr -d '\r')
 printf '%s\n' "$clean" | grep -a -E '▸|✗|^!|###|^E: |MISSING-' | head -40
 check "setup.sh finishes, up opens Claude with the key, and it exits fine" '[ "$code" = 0 ]'
+[ "$code" = 0 ] || { echo "----- Claude's screen:"; as_mint tmux capture-pane -p -t "=$name" 2>&1 | grep -v '^\s*$' | head -25; }
 check "doesn't ask whether it trusts the folder" '! grep -aq "trust this folder" /tmp/live.log'
 check "the cdrom source got disabled" '! grep -q "^deb cdrom" /etc/apt/sources.list'
 check "setup.sh doesn't install Tailscale (it's optional)" '! command -v tailscale >/dev/null'
