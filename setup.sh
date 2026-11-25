@@ -28,14 +28,22 @@ clonar() {
   fi
 }
 
-# apt ...: con reintentos, porque al arrancar el live a veces apt está ocupado.
-apt() {
+# En el live, apt-get update siempre falla por la fuente cdrom:// del USB, que
+# no tiene archivo Release. El resto se actualiza igual: el error no importa.
+actualizar() {
+  sudo apt-get -qq update >/dev/null 2>&1 || true
+}
+
+# instalar <paquetes>: con reintentos, porque al arrancar el live a veces apt
+# está ocupado. Si falta algo de verdad, acá se ve.
+instalar() {
   n=0
-  until sudo DEBIAN_FRONTEND=noninteractive apt-get -qq -o DPkg::Lock::Timeout=120 "$@" >/dev/null; do
+  until sudo DEBIAN_FRONTEND=noninteractive apt-get -qq -o DPkg::Lock::Timeout=120 install -y "$@" >/dev/null; do
     n=$((n + 1))
-    [ "$n" -lt 3 ] || falla "apt-get $1 no anduvo"
-    aviso "apt-get $1 falló; reintento en 20 segundos"
+    [ "$n" -lt 3 ] || falla "no pude instalar: $*"
+    aviso "apt-get install falló; reintento en 20 segundos"
     sleep 20
+    actualizar
   done
 }
 
@@ -49,8 +57,8 @@ main() {
   command -v apt-get >/dev/null || falla "hace falta Linux con apt (Mint, Ubuntu, Debian)"
 
   paso "Programas"
-  apt update
-  apt install -y curl git gh tmux ripgrep jq ffmpeg rclone python3
+  actualizar
+  instalar curl git gh tmux ripgrep jq ffmpeg rclone python3
   # yt-dlp de su sitio: el de apt viene viejo y YouTube cambia seguido.
   { sudo curl -fsSL -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp &&
     sudo chmod +x /usr/local/bin/yt-dlp; } || aviso "no pude bajar yt-dlp"

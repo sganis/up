@@ -16,6 +16,8 @@ docker run --rm --platform linux/amd64 -e GH_TOKEN="$(gh auth token)" -e REPO="$
 set -e
 useradd -m -s /bin/bash mint
 echo "mint ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/mint   # como en el live
+# Como en el live: una fuente cdrom:// sin archivo Release, que hace fallar apt-get update.
+echo "deb cdrom:[Linux Mint 22.2 _Zara_]/ noble contrib main" >/etc/apt/sources.list.d/cdrom.list
 como() { runuser -u mint -- env HOME=/home/mint USER=mint GH_TOKEN="$GH_TOKEN" TERM=xterm-256color "$@"; }
 como mkdir -p /home/mint/dev
 como cp -r /src /home/mint/dev/up   # el código de acá, no el publicado
