@@ -12,10 +12,10 @@ Siempre con `https://`: sin eso, el primer pedido viaja sin cifrar y en una red 
 2. Se conecta a GitHub: muestra un QR que abre github.com/login/device en el celular, y ahí se escribe el código.
 3. Baja el repo privado `<usuario>/up-priv` y toma de ahí la configuración.
 4. Pone la zona horaria.
-5. Instala Rust (rustup) y Claude Code.
+5. Instala `oc` (OpenShift) y `kubectl`, Rust (rustup), Bun y Claude Code.
 6. Instala Tailscale y lo conecta con un QR que se aprueba desde el celular (Ctrl-C lo saltea).
 
-Al terminar, en la misma terminal ya andan `up`, `down`, `claude`, `cargo` y `drive`. Si algo ya estaba hecho, lo saltea: correrlo de nuevo no baja nada otra vez.
+Al terminar, en la misma terminal ya andan `up`, `down`, `claude`, `cargo`, `bun`, `oc` y `drive`. Si algo ya estaba hecho, lo saltea: correrlo de nuevo no baja nada otra vez.
 
 En la máquina no se escribe ninguna contraseña.
 

@@ -61,11 +61,11 @@ main() {
   sin_cdrom
   # Cada paso se saltea si ya está hecho: correrlo de nuevo no baja nada otra vez.
   falta=
-  for c in curl git gh tmux rg jq ffmpeg rclone python3 qrencode cc pkg-config; do command -v "$c" >/dev/null || falta=1; done
+  for c in curl git gh tmux rg jq ffmpeg rclone python3 qrencode unzip cc pkg-config; do command -v "$c" >/dev/null || falta=1; done
   if [ -n "$falta" ]; then
     actualizar
     sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y \
-      curl git gh tmux ripgrep jq ffmpeg rclone python3 qrencode build-essential pkg-config libssl-dev >/dev/null || falla "no pude instalar los programas (el error de apt está arriba)"
+      curl git gh tmux ripgrep jq ffmpeg rclone python3 qrencode unzip build-essential pkg-config libssl-dev >/dev/null || falla "no pude instalar los programas (el error de apt está arriba)"
   fi
   # yt-dlp de su sitio: el de apt viene viejo y YouTube cambia seguido.
   if [ ! -x /usr/local/bin/yt-dlp ]; then
@@ -117,6 +117,13 @@ if [ -f ~/dev/up-priv/bashrc ]; then . ~/dev/up-priv/bashrc; fi
 FIN
   fi
 
+  # oc (OpenShift) y kubectl, del sitio oficial: no están en apt.
+  if ! command -v oc >/dev/null; then
+    case $(uname -m) in aarch64 | arm64) a=-arm64 ;; *) a= ;; esac
+    curl -fsSL "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux$a.tar.gz" |
+      sudo tar -xz -C /usr/local/bin oc kubectl || aviso "no pude instalar oc"
+  fi
+
   paso "Rust"
   # Con rustup, el instalador oficial. Agrega ~/.cargo/bin a ~/.bashrc para las
   # terminales nuevas; los enlaces en /usr/local/bin hacen que ande ya en esta.
@@ -124,6 +131,12 @@ FIN
     curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y -q || aviso "no pude instalar Rust"
   fi
   for f in "$HOME"/.cargo/bin/*; do [ -x "$f" ] && sudo ln -sf "$f" /usr/local/bin/; done
+
+  paso "Bun"
+  if [ ! -x "$HOME/.bun/bin/bun" ]; then
+    curl -fsSL https://bun.sh/install | bash >/dev/null 2>&1 || aviso "no pude instalar Bun"
+  fi
+  for f in "$HOME"/.bun/bin/*; do [ -x "$f" ] && sudo ln -sf "$f" /usr/local/bin/; done
 
   paso "Claude"
   [ -x "$HOME/.local/bin/claude" ] || curl -fsSL https://claude.ai/install.sh | bash
