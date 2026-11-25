@@ -48,7 +48,7 @@ main() {
   paso "Programas"
   actualizar
   sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y \
-    curl git gh tmux ripgrep jq ffmpeg rclone python3 >/dev/null || falla "no pude instalar los programas (el error de apt está arriba)"
+    curl git gh tmux ripgrep jq ffmpeg rclone python3 qrencode >/dev/null || falla "no pude instalar los programas (el error de apt está arriba)"
   # yt-dlp de su sitio: el de apt viene viejo y YouTube cambia seguido.
   { sudo curl -fsSL -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp &&
     sudo chmod +x /usr/local/bin/yt-dlp; } || aviso "no pude bajar yt-dlp"
@@ -56,8 +56,9 @@ main() {
   paso "GitHub"
   if ! gh auth status >/dev/null 2>&1; then
     [ -n "$tty" ] || falla "sin terminal no puedo pedir el acceso a GitHub"
-    echo "Cuando aparezca el código: en el celular entrá a github.com/login/device,"
-    echo "escribilo y tocá Authorize. Acá, apretá Enter cuando lo pida."
+    echo "Escaneá este QR con el celular (abre github.com/login/device),"
+    echo "escribí el código que aparece abajo y tocá Authorize. Acá, apretá Enter cuando lo pida."
+    qrencode -t ANSIUTF8 -m 2 https://github.com/login/device || true
     GH_BROWSER=true gh auth login --hostname github.com --git-protocol https --web --insecure-storage
   fi
   gh auth setup-git
