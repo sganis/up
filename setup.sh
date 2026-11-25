@@ -47,12 +47,19 @@ main() {
   command -v apt-get >/dev/null || falla "hace falta Linux con apt (Mint, Ubuntu, Debian)"
 
   paso "Programas"
-  actualizar
-  sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y \
-    curl git gh tmux ripgrep jq ffmpeg rclone python3 qrencode >/dev/null || falla "no pude instalar los programas (el error de apt está arriba)"
+  # Cada paso se saltea si ya está hecho: correrlo de nuevo no baja nada otra vez.
+  falta=
+  for c in curl git gh tmux rg jq ffmpeg rclone python3 qrencode; do command -v "$c" >/dev/null || falta=1; done
+  if [ -n "$falta" ]; then
+    actualizar
+    sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y \
+      curl git gh tmux ripgrep jq ffmpeg rclone python3 qrencode >/dev/null || falla "no pude instalar los programas (el error de apt está arriba)"
+  fi
   # yt-dlp de su sitio: el de apt viene viejo y YouTube cambia seguido.
-  { sudo curl -fsSL -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp &&
-    sudo chmod +x /usr/local/bin/yt-dlp; } || aviso "no pude bajar yt-dlp"
+  if [ ! -x /usr/local/bin/yt-dlp ]; then
+    { sudo curl -fsSL -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp &&
+      sudo chmod +x /usr/local/bin/yt-dlp; } || aviso "no pude bajar yt-dlp"
+  fi
 
   paso "GitHub"
   if ! gh auth status >/dev/null 2>&1; then
